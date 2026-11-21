@@ -194,15 +194,12 @@
 const API_BASE = ""; 
 let API_KEY = localStorage.getItem("xs0.key") || "";
 
-// --- CORE HTTP ---
 async function apiFetch(path, options = {}) {
   const headers = { "accept": "application/json", ...options.headers };
   if (API_KEY) headers["X-API-Key"] = API_KEY;
   const res = await fetch(API_BASE + path, { ...options, headers });
   if (!res.ok) {
-    if (res.status === 403 || res.status === 401) {
-      throw new Error("Akses API ditolak");
-    }
+    if (res.status === 403 || res.status === 401) throw new Error("Akses API ditolak");
     const errData = await res.json().catch(() => ({}));
     throw new Error(errData.detail || `HTTP Error ${res.status}`);
   }
@@ -215,7 +212,6 @@ function toast(msg) {
   clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 3000);
 }
 
-// --- NAVIGASI ---
 function switchView(id) {
   document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
   document.getElementById('view-' + id).classList.add('active');
@@ -225,7 +221,6 @@ function switchView(id) {
 
 document.getElementById('btn-trending').addEventListener('click', () => switchView('search'));
 
-// --- GREETING ---
 function updateGreeting() {
   const h = new Date(Date.now() + (new Date().getTimezoneOffset() * 60000) + 7 * 3600000).getHours();
   let str = "Malam", color = "#8b5cf6";
@@ -237,7 +232,6 @@ function updateGreeting() {
 }
 updateGreeting(); setInterval(updateGreeting, 60000);
 
-// --- RENDER HELPERS ---
 function placeholder(title) {
   const h = [...String(title)].reduce((a, c) => a + c.charCodeAt(0), 0) % 360;
   return `linear-gradient(135deg,hsl(${h} 60% 20%),hsl(${(h + 40) % 360} 70% 8%))`;
@@ -248,7 +242,8 @@ function createCard(id, title, sub, imgUrl, index = 0) {
   const el = document.createElement("div");
   el.className = "card";
   el.innerHTML = `
-    ${imgUrl ? `<img src="${imgUrl}" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;" loading="lazy">` : `<div style="position:absolute;inset:0;background:${placeholder(title)};display:flex;align-items:center;justify-content:center;font-size:40px;font-weight:900;color:rgba(255,255,255,.2)">${escapeHtml(title.charAt(0))}</div>`}
+    ${imgUrl && imgUrl !== "" ? `<img src="${imgUrl}" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;" loading="lazy" onerror="this.style.display='none'">` : ""}
+    <div style="position:absolute;inset:0;background:${placeholder(title)};display:flex;align-items:center;justify-content:center;font-size:40px;font-weight:900;color:rgba(255,255,255,.2);z-index:-1">${escapeHtml(title.charAt(0))}</div>
     <div class="card-badge">HD</div>
     <div class="card-meta">
       <h3>${escapeHtml(title)}</h3>
@@ -267,10 +262,8 @@ async function loadHome() {
     try {
       const data = await apiFetch("/api/browse?size=20");
       list = data.product_list || [];
-    } catch (e) {
-      // Fallback to search
-    }
-    
+    } catch (e) {}
+
     if (!list.length) {
       const data = await apiFetch("/api/search?q=Drama");
       list = (data.series || []).map(s => ({
@@ -280,6 +273,9 @@ async function loadHome() {
       }));
     }
 
+    // Filter yang ada kata "Trailer"
+    list = list.filter(s => !s.synopsis.toLowerCase().includes("trailer"));
+
     grid.innerHTML = "";
     if (!list.length) {
       grid.innerHTML = `<div class="empty"><b>Data Kosong</b>Tidak ada hasil dari server.</div>`;
@@ -288,8 +284,11 @@ async function loadHome() {
 
     list.slice(0, 15).forEach((s, i) => {
       const title = s.synopsis ? s.synopsis.split(" - Episode")[0] : (s.name || `Series ${s.series_id || s.id}`);
-      const img = s.series_cover_portrait_image_url || s.cover_image_url || s.series_cover_landscape_image_url || s.cover_landscape_image_url;
       const sid = s.series_id || s.id;
+      
+      // Fallback berlapis buat image
+      let img = s.series_cover_portrait_image_url || s.cover_portrait_image_url || s.series_cover_landscape_image_url || s.cover_landscape_image_url;
+      
       grid.appendChild(createCard(sid, title, "", img, i));
     });
   } catch (e) {
@@ -304,9 +303,7 @@ const searchInput = document.getElementById("search");
 searchInput.addEventListener("input", (e) => {
   clearTimeout(searchTimer);
   const q = e.target.value.trim();
-  
   if (searchController) searchController.abort();
-  
   if (!q) { switchView('home'); return; }
   switchView('search');
   
@@ -328,9 +325,7 @@ searchInput.addEventListener("input", (e) => {
       }
       data.series.forEach((s, i) => grid.appendChild(createCard(s.id, s.name, s.weight ? `Skor: ${s.weight}` : "", null, i)));
     } catch (err) {
-      if (err.name !== "AbortError") {
-        grid.innerHTML = `<div class="empty"><b>Pencarian Gagal</b>${escapeHtml(err.message)}</div>`;
-      }
+      if (err.name !== "AbortError") grid.innerHTML = `<div class="empty"><b>Pencarian Gagal</b>${escapeHtml(err.message)}</div>`;
     }
   }, 500);
 });
@@ -353,7 +348,7 @@ async function openDetail(id, fallbackTitle) {
 
   try {
     const data = await apiFetch(`/api/series/${id}`, { signal: detailController.signal });
-    const eps = data.episodes || [];
+    const eps = (data.episodes || []).filter(ep => ep.number !== "0"); // Buang trailer (EP 0)
     currentSeries = { id, title: fallbackTitle, episodes: eps };
 
     const first = eps[0] || {};
@@ -395,17 +390,13 @@ function closeDetail() { document.getElementById("detail").classList.remove("ope
 const player = document.getElementById("player");
 const video = document.getElementById("video");
 const spinner = document.getElementById("spinner");
-let hls = null;
-let activeEp = null, activeSeries = null;
-let playController = null;
-let lastSavedTime = 0;
+let hls = null, activeEp = null, activeSeries = null, playController = null, lastSavedTime = 0;
 
 function extractStreamUrl(obj) {
   if (!obj) return null;
   if (typeof obj === "string") return /^https?:\/\//.test(obj) && /\.(m3u8|mp4)/i.test(obj) ? obj : null;
   if (Array.isArray(obj)) { for (const v of obj) { const u = extractStreamUrl(v); if (u) return u; } return null; }
   if (typeof obj === "object") {
-    // Prioritas stream Viu distribute
     if (obj.stream && obj.stream.url) {
       const u = obj.stream.url;
       if (u.s1080p) return u.s1080p;
@@ -413,7 +404,6 @@ function extractStreamUrl(obj) {
       if (u.s480p) return u.s480p;
       if (u.s240p) return u.s240p;
     }
-    
     const keys = ["play_url", "hls_url", "stream_url", "url", "link", "video_url", "m3u8", "mp4_url", "src"];
     for (const k of keys) { if (typeof obj[k] === "string" && /^https?:\/\//.test(obj[k])) return obj[k]; }
     for (const k in obj) { const u = extractStreamUrl(obj[k]); if (u) return u; }
@@ -437,7 +427,6 @@ async function playEpisode(ep, series) {
   playController = new AbortController();
 
   try {
-    // GUNAKAN ccs_product_id UNTUK ENDPOINT BARU
     const data = await apiFetch(`/api/play/${ep.ccs_product_id}?series_id=${series.id}`, { signal: playController.signal });
     const url = extractStreamUrl(data);
     if (!url) throw new Error("URL stream tidak ditemukan di response.");
@@ -470,9 +459,9 @@ function attachStream(url, seriesId, ep) {
       hls.on(Hls.Events.ERROR, (event, data) => {
         if (data.fatal) {
           spinner.classList.remove("on");
-          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) { hls.startLoad(); toast("Jaringan bermasalah, mencoba memuat ulang..."); }
-          else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) { hls.recoverMediaError(); toast("Media error, mencoba memulihkan..."); }
-          else { toast("Stream error fatal."); }
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) { hls.startLoad(); toast("Jaringan bermasalah..."); }
+          else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) { hls.recoverMediaError(); toast("Media error..."); }
+          else toast("Stream error fatal.");
         }
       });
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
@@ -515,16 +504,14 @@ function closePlayer() {
   if (playController) playController.abort();
 }
 
-// --- HISTORY & RESUME ---
+// --- HISTORY ---
 function saveHistory(seriesId, ep, title, progress) {
   let h = [];
   try { h = JSON.parse(localStorage.getItem("xs0.history") || "[]"); } catch { h = []; }
   if (!Array.isArray(h)) h = [];
   h = h.filter(x => x && x.seriesId && x.ep);
-  
   const idx = h.findIndex(x => String(x.seriesId) === String(seriesId));
   if (idx >= 0) h.splice(idx, 1);
-  
   h.unshift({ seriesId, ep: ep.number, ccsProductId: ep.ccs_product_id, title, progress, ts: Date.now() });
   localStorage.setItem("xs0.history", JSON.stringify(h.slice(0, 20)));
   renderHistory();
