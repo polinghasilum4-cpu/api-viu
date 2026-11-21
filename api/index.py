@@ -1,4 +1,4 @@
-# api/index.py — Viu Auto API (Strict Headers Search)
+# api/index.py — Viu Auto API (Debug Search Edition)
 import os, json, hashlib, logging, re, random, asyncio
 from typing import Optional, Dict, Any
 from fastapi import FastAPI, HTTPException
@@ -41,7 +41,6 @@ def kv_set(key: str, value: str, ex: int = 3600) -> None:
                   content=value, params={"expiration_ttl": str(ex)})
     except: pass
 
-# --- AUTO HARVEST DENGAN CONCURRENT PROXY ---
 async def test_proxy(proxy: str, headers: dict) -> Optional[str]:
     try:
         px = {"http": f"http://{proxy}", "https": f"http://{proxy}"}
@@ -132,7 +131,7 @@ def search(q: str):
 
     token = _bearer()
     
-    # PERSIS KAYAK HEADER CURL LU
+    # Persis kayak curl lu
     headers = {
         "sec-ch-ua-platform": '"Android"',
         "authorization": f"Bearer {token}",
@@ -141,17 +140,11 @@ def search(q: str):
         "user-agent": UA,
         "accept": "application/json, text/plain, */*",
         "origin": "https://www.viu.com",
-        "sec-fetch-site": "same-site",
-        "sec-fetch-mode": "cors",
-        "sec-fetch-dest": "empty",
         "referer": "https://www.viu.com/",
         "accept-language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
-        "priority": "u=1, i"
     }
     
-    # Ganti spasi jadi + (bukan %20)
     keyword_encoded = q.replace(" ", "+")
-    
     url = f"{BASE}?platform_flag_label=web&area_id=1000&language_flag_id=8&ut=0&platformFlagLabel=web&areaId=1000&languageFlagId=8&countryCode=ID&r=%2Fsearch%2Fprediction&keyword={keyword_encoded}"
     
     with Session(impersonate="chrome") as s:
@@ -161,12 +154,13 @@ def search(q: str):
         raise HTTPException(502, f"Viu HTTP {r.status_code}")
         
     data = r.json()
-    result_data = data.get("data", {})
     
+    # KITA TAMBAHIN _DEBUG BIAR KELIATAN VIU BALAS APA
     result = {
         "query": q,
-        "series": result_data.get("series", []),
-        "actor": result_data.get("actor", [])
+        "series": data.get("data", {}).get("series", []),
+        "actor": data.get("data", {}).get("actor", []),
+        "_debug_viu_response": data  # <--- INI KUNCINYA
     }
     
     if result["series"] or result["actor"]:
