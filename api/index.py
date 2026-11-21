@@ -1,4 +1,4 @@
-# api/index.py — Viu Auto API (Search Fixed + Stable)
+# api/index.py — Viu Auto API (Exact Match Search UA)
 import os, json, hashlib, logging, re, random, asyncio
 from typing import Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, Query
@@ -16,10 +16,10 @@ COMMON = {
     "platformFlagLabel": "web", "areaId": "1000",
     "languageFlagId": "8", "countryCode": "ID", "os_flag_id": "1",
 }
-UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-      "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+# UA persis kayak di curl lu
+UA = ("Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 "
+      "(KHTML, like Gecko) Chrome/157.0.0.0 Mobile Safari/537.36")
 
-# --- CLOUDFLARE KV SETUP ---
 CF_ACCOUNT = os.environ.get("CF_ACCOUNT_ID", "")
 CF_KV_ID = os.environ.get("CF_KV_NAMESPACE_ID", "")
 CF_TOKEN = os.environ.get("CF_KV_TOKEN", "")
@@ -41,7 +41,6 @@ def kv_set(key: str, value: str, ex: int = 3600) -> None:
                   content=value, params={"expiration_ttl": str(ex)})
     except: pass
 
-# --- AUTO HARVEST DENGAN CONCURRENT PROXY ---
 async def test_proxy(proxy: str, headers: dict) -> Optional[str]:
     try:
         px = {"http": f"http://{proxy}", "https": f"http://{proxy}"}
@@ -50,7 +49,6 @@ async def test_proxy(proxy: str, headers: dict) -> Optional[str]:
             if "not available in your country" not in r1.text:
                 m = re.search(r'(eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+)', r1.text)
                 if m: return m.group(1)
-            
             guest_url = "https://api-gateway-global.viu.com/api/mobile?r=/vod/login/guest&platform_flag_label=web&area_id=1000&language_flag_id=8&ut=0&countryCode=ID"
             r2 = await s.get(guest_url, headers=headers)
             if r2.status_code == 200:
@@ -67,11 +65,9 @@ async def auto_harvest_token_async() -> str:
         random.shuffle(proxies_list)
         proxies_list = proxies_list[:40]
     except: pass
-        
     if not proxies_list: return ""
     headers = {"user-agent": UA, "accept-language": "id-ID,id;q=0.9"}
     tasks = [test_proxy(proxy.strip(), headers) for proxy in proxies_list]
-    
     for coro in asyncio.as_completed(tasks):
         tok = await coro
         if tok: return tok
@@ -92,7 +88,6 @@ def _call(route: str, params: Optional[Dict] = None) -> Any:
     q = {**COMMON, "r": route}
     if params: q.update(params)
     headers = {"accept": "application/json, text/plain, */*", "authorization": f"Bearer {_bearer()}", "user-agent": UA, "origin": "https://www.viu.com", "referer": "https://www.viu.com/"}
-    
     try:
         with Session(impersonate="chrome") as s:
             r = s.get(BASE, params=q, headers=headers, timeout=15)
@@ -101,65 +96,97 @@ def _call(route: str, params: Optional[Dict] = None) -> Any:
                 headers["authorization"] = f"Bearer {auto_harvest_token()}"
                 r = s.get(BASE, params=q, headers=headers, timeout=15)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Koneksi ke Viu gagal: {str(e)}")
+        raise HTTPException(status_code=502, detail=str(e))
 
     if r.status_code != 200:
-        raise HTTPException(status_code=r.status_code, detail=f"Viu API nolak request (HTTP {r.status_code})")
-
+        raise HTTPException(status_code=r.status_code, detail=f"Viu HTTP {r.status_code}")
     try:
         data = r.json()
     except:
-        raise HTTPException(status_code=500, detail="Viu balikin format bukan JSON")
-
+        raise HTTPException(status_code=500, detail="Bukan JSON")
     if not isinstance(data, dict):
-        raise HTTPException(status_code=500, detail="Format response Viu tidak dikenal.")
-
+        raise HTTPException(status_code=500, detail="Format aneh")
     if data.get("status", {}).get("code") != 0:
-        raise HTTPException(502, f"Viu error: {data.get('status', {}).get('message', 'Unknown')}")
-        
+        raise HTTPException(502, data.get("status", {}).get("message", "Error"))
     return data.get("data", {})
 
-app = FastAPI(title="Viu Auto API")
+app = FastAPI(title="Viu API")
 
 @app.get("/")
-def root():
-    return {"status": "ok", "message": "Viu API nyala."}
+def root(): return {"status": "ok"}
 
 @app.get("/api/health")
 def health():
     try:
         _bearer()
-        return {"ok": True, "status": "Token siap", "engine": "Vercel SG"}
+        return {"ok": True, "status": "Token siap"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+@app.get("/api/search")
+def search(q: str):
+    ckey = f"viu:search:{hashlib.md5(q.encode()).hexdigest()}"
+    cached = kv_get(ckey)
+    if cached: return json.loads(cached)
+
+    # Paksa pake raw query string persis kayak curl lu biar pasti dapet
+    token = _bearer()
+    headers = {
+        "accept": "application/json, text/plain, */*",
+        "authorization": f"Bearer {token}",
+        "user-agent": UA,
+        "origin": "https://www.viu.com",
+        "referer": "https://www.viu.com/",
+    }
+    # urlencode q biar spasi jadi %20 atau +
+    from urllib.parse import quote
+    keyword_encoded = quote(q)
+    
+    url = f"{BASE}?platform_flag_label=web&area_id=1000&language_flag_id=8&ut=0&platformFlagLabel=web&areaId=1000&languageFlagId=8&countryCode=ID&r=%2Fsearch%2Fprediction&keyword={keyword_encoded}"
+    
+    with Session(impersonate="chrome") as s:
+        r = s.get(url, headers=headers, timeout=15)
+        
+    if r.status_code != 200:
+        raise HTTPException(502, f"Viu HTTP {r.status_code}")
+        
+    data = r.json()
+    result_data = data.get("data", {})
+    
+    result = {
+        "query": q,
+        "series": result_data.get("series", []),
+        "actor": result_data.get("actor", [])
+    }
+    
+    if result["series"] or result["actor"]:
+        kv_set(ckey, json.dumps(result, ensure_ascii=False), ex=3600)
+        
+    return result
 
 @app.get("/api/home")
 def home():
     ckey = "viu:home"
     cached = kv_get(ckey)
     if cached: return json.loads(cached)
-    
     try:
         data = _call("/vod/home")
         if data and isinstance(data, dict):
             kv_set(ckey, json.dumps(data, ensure_ascii=False), ex=1800)
             return data
     except Exception: pass
-
     try:
         with Session(impersonate="chrome") as s:
             r = s.get(VIU_HOME, headers={"user-agent": UA}, timeout=15)
             if r.status_code == 200 and "not available in your country" not in r.text:
                 series_ids = list(set(re.findall(r'"series_id":\s*"(\d+)"', r.text)))
                 fallback_list = [{"series_id": sid} for sid in series_ids[:20]]
-                result = {"status": "success", "method": "html_scrape", "message": "Data dari halaman depan", "data": fallback_list}
+                result = {"status": "success", "method": "html_scrape", "data": fallback_list}
                 if fallback_list:
                     kv_set(ckey, json.dumps(result, ensure_ascii=False), ex=1800)
                     return result
-    except Exception as e:
-        log.error(f"Scrape HTML gagal: {e}")
-
-    return {"status": "error", "message": "Gagal mengambil data home."}
+    except Exception as e: pass
+    return {"status": "error", "message": "Gagal ambil data home."}
 
 @app.get("/api/series/{series_id}")
 def series(series_id: str, refresh: bool = False):
@@ -172,50 +199,6 @@ def series(series_id: str, refresh: bool = False):
     result = {"series_id": series_id, "episodes": plist}
     kv_set(ckey, json.dumps(result, ensure_ascii=False), ex=21600)
     return result
-
-@app.get("/api/episodes/{series_id}")
-def episodes(series_id: str):
-    return series(series_id)["episodes"]
-
-# --- ENDPOINT SEARCH (SUDAH DI-FIX) ---
-@app.get("/api/search")
-def search(q: str):
-    ckey = f"viu:search:{hashlib.md5(q.encode()).hexdigest()}"
-    cached = kv_get(ckey)
-    if cached: return json.loads(cached)
-
-    # Pake endpoint /search/prediction dengan param keyword (sesuai temuan lu)
-    data = _call("/search/prediction", {"keyword": q})
-    
-    # Viu ngembaliin {"series": [...], "actor": [...]}
-    result = {
-        "query": q,
-        "series": data.get("series", []),
-        "actor": data.get("actor", [])
-    }
-    
-    if result["series"] or result["actor"]:
-        kv_set(ckey, json.dumps(result, ensure_ascii=False), ex=3600)
-        
-    return result
-
-@app.get("/api/browse")
-def browse(size: int = 20, page: int = 1, sort: str = "desc", filter_id: str = "1"):
-    ckey = f"viu:browse:{filter_id}:{page}:{size}"
-    cached = kv_get(ckey)
-    if cached: return json.loads(cached)
-
-    params = {"size": size, "sort": sort, "start": (page - 1) * size, "filter_id": filter_id}
-    try:
-        data = _call("/vod/product-list", params)
-        plist = data.get("product_list", [])
-        if plist:
-            kv_set(ckey, json.dumps(data, ensure_ascii=False), ex=1800)
-            return data
-    except Exception as e:
-        log.warning(f"Browse filter_id={filter_id} gagal: {e}")
-
-    return {"product_list": [], "note": "Viu nolak browse. Coba ganti filter_id=2 atau pakai /api/search."}
 
 @app.get("/api/play/{product_id}")
 def play(product_id: str, series_id: str = None):
