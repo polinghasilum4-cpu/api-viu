@@ -192,10 +192,12 @@
 
 <script>
 const API_BASE = ""; 
+let API_KEY = localStorage.getItem("xs0.key") || "";
 
 // --- CORE HTTP ---
 async function apiFetch(path, options = {}) {
   const headers = { "accept": "application/json", ...options.headers };
+  if (API_KEY) headers["X-API-Key"] = API_KEY;
   const res = await fetch(API_BASE + path, { ...options, headers });
   if (!res.ok) {
     if (res.status === 403 || res.status === 401) {
@@ -242,11 +244,11 @@ function placeholder(title) {
 }
 function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 
-function createCard(id, title, sub, index = 0) {
+function createCard(id, title, sub, imgUrl, index = 0) {
   const el = document.createElement("div");
   el.className = "card";
   el.innerHTML = `
-    <div style="position:absolute;inset:0;background:${placeholder(title)};display:flex;align-items:center;justify-content:center;font-size:40px;font-weight:900;color:rgba(255,255,255,.2)">${escapeHtml(title.charAt(0))}</div>
+    ${imgUrl ? `<img src="${imgUrl}" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;" loading="lazy">` : `<div style="position:absolute;inset:0;background:${placeholder(title)};display:flex;align-items:center;justify-content:center;font-size:40px;font-weight:900;color:rgba(255,255,255,.2)">${escapeHtml(title.charAt(0))}</div>`}
     <div class="card-badge">HD</div>
     <div class="card-meta">
       <h3>${escapeHtml(title)}</h3>
@@ -261,21 +263,42 @@ async function loadHome() {
   const grid = document.getElementById("home-grid");
   grid.innerHTML = Array(10).fill('<div class="skel"></div>').join("");
   try {
-    const data = await apiFetch("/api/search?q=Drama");
+    let list = [];
+    try {
+      const data = await apiFetch("/api/browse?size=20");
+      list = data.product_list || [];
+    } catch (e) {
+      // Fallback to search
+    }
+    
+    if (!list.length) {
+      const data = await apiFetch("/api/search?q=Drama");
+      list = (data.series || []).map(s => ({
+        series_id: s.id,
+        synopsis: s.name,
+        cover_image_url: null
+      }));
+    }
+
     grid.innerHTML = "";
-    if (!data.series || !data.series.length) {
+    if (!list.length) {
       grid.innerHTML = `<div class="empty"><b>Data Kosong</b>Tidak ada hasil dari server.</div>`;
       return;
     }
-    data.series.slice(0, 15).forEach((s, i) => grid.appendChild(createCard(s.id, s.name, "", i)));
+
+    list.slice(0, 15).forEach((s, i) => {
+      const title = s.synopsis ? s.synopsis.split(" - Episode")[0] : (s.name || `Series ${s.series_id || s.id}`);
+      const img = s.series_cover_portrait_image_url || s.cover_image_url || s.series_cover_landscape_image_url || s.cover_landscape_image_url;
+      const sid = s.series_id || s.id;
+      grid.appendChild(createCard(sid, title, "", img, i));
+    });
   } catch (e) {
     grid.innerHTML = `<div class="empty"><b>Koneksi Gagal</b>${escapeHtml(e.message)}</div>`;
   }
 }
 
-// --- SEARCH (RACE CONDITION SAFE) ---
-let searchTimer;
-let searchController = null;
+// --- SEARCH ---
+let searchTimer, searchController = null;
 const searchInput = document.getElementById("search");
 
 searchInput.addEventListener("input", (e) => {
@@ -303,7 +326,7 @@ searchInput.addEventListener("input", (e) => {
         grid.innerHTML = `<div class="empty"><b>Nggak Ketemu</b>Coba kata kunci lain.</div>`;
         return;
       }
-      data.series.forEach((s, i) => grid.appendChild(createCard(s.id, s.name, s.weight ? `Skor: ${s.weight}` : "", i)));
+      data.series.forEach((s, i) => grid.appendChild(createCard(s.id, s.name, s.weight ? `Skor: ${s.weight}` : "", null, i)));
     } catch (err) {
       if (err.name !== "AbortError") {
         grid.innerHTML = `<div class="empty"><b>Pencarian Gagal</b>${escapeHtml(err.message)}</div>`;
@@ -313,8 +336,7 @@ searchInput.addEventListener("input", (e) => {
 });
 
 // --- DETAIL MODAL ---
-let currentSeries = null;
-let detailController = null;
+let currentSeries = null, detailController = null;
 
 async function openDetail(id, fallbackTitle) {
   const overlay = document.getElementById("detail");
@@ -383,6 +405,15 @@ function extractStreamUrl(obj) {
   if (typeof obj === "string") return /^https?:\/\//.test(obj) && /\.(m3u8|mp4)/i.test(obj) ? obj : null;
   if (Array.isArray(obj)) { for (const v of obj) { const u = extractStreamUrl(v); if (u) return u; } return null; }
   if (typeof obj === "object") {
+    // Prioritas stream Viu distribute
+    if (obj.stream && obj.stream.url) {
+      const u = obj.stream.url;
+      if (u.s1080p) return u.s1080p;
+      if (u.s720p) return u.s720p;
+      if (u.s480p) return u.s480p;
+      if (u.s240p) return u.s240p;
+    }
+    
     const keys = ["play_url", "hls_url", "stream_url", "url", "link", "video_url", "m3u8", "mp4_url", "src"];
     for (const k of keys) { if (typeof obj[k] === "string" && /^https?:\/\//.test(obj[k])) return obj[k]; }
     for (const k in obj) { const u = extractStreamUrl(obj[k]); if (u) return u; }
@@ -406,7 +437,8 @@ async function playEpisode(ep, series) {
   playController = new AbortController();
 
   try {
-    const data = await apiFetch(`/api/play/${ep.product_id}?series_id=${series.id}`, { signal: playController.signal });
+    // GUNAKAN ccs_product_id UNTUK ENDPOINT BARU
+    const data = await apiFetch(`/api/play/${ep.ccs_product_id}?series_id=${series.id}`, { signal: playController.signal });
     const url = extractStreamUrl(data);
     if (!url) throw new Error("URL stream tidak ditemukan di response.");
     
@@ -426,7 +458,7 @@ function attachStream(url, seriesId, ep) {
   video.removeAttribute("src");
   video.load();
 
-  const resumePos = getSavedProgress(seriesId, ep.product_id);
+  const resumePos = getSavedProgress(seriesId, ep.ccs_product_id);
   if (resumePos > 5) video.addEventListener("loadedmetadata", () => { video.currentTime = resumePos; }, { once: true });
 
   if (url.includes(".m3u8")) {
@@ -493,14 +525,14 @@ function saveHistory(seriesId, ep, title, progress) {
   const idx = h.findIndex(x => String(x.seriesId) === String(seriesId));
   if (idx >= 0) h.splice(idx, 1);
   
-  h.unshift({ seriesId, ep: ep.number, productId: ep.product_id, title, progress, ts: Date.now() });
+  h.unshift({ seriesId, ep: ep.number, ccsProductId: ep.ccs_product_id, title, progress, ts: Date.now() });
   localStorage.setItem("xs0.history", JSON.stringify(h.slice(0, 20)));
   renderHistory();
 }
-function getSavedProgress(seriesId, productId) {
+function getSavedProgress(seriesId, ccsProductId) {
   try {
     const h = JSON.parse(localStorage.getItem("xs0.history") || "[]");
-    const item = h.find(x => String(x.seriesId) === String(seriesId) && String(x.productId) === String(productId));
+    const item = h.find(x => String(x.seriesId) === String(seriesId) && String(x.ccsProductId) === String(ccsProductId));
     return item ? item.progress : 0;
   } catch { return 0; }
 }
@@ -515,7 +547,7 @@ function renderHistory() {
   
   row.style.display = "block";
   grid.innerHTML = "";
-  h.forEach((item, i) => grid.appendChild(createCard(item.seriesId, item.title || `Series ${item.seriesId}`, `Lanjut EP ${item.ep}`, i)));
+  h.forEach((item, i) => grid.appendChild(createCard(item.seriesId, item.title || `Series ${item.seriesId}`, `Lanjut EP ${item.ep}`, null, i)));
 }
 
 // --- INIT ---
@@ -528,4 +560,4 @@ async function init() {
 init();
 </script>
 </body>
-</html>
+  </html>
