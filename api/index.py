@@ -1,4 +1,4 @@
-# api/index.py — Viu Auto API (Resilient Edition)
+# api/index.py — Viu Auto API (Search Fixed + Stable)
 import os, json, hashlib, logging, re, random, asyncio
 from typing import Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, Query
@@ -111,7 +111,6 @@ def _call(route: str, params: Optional[Dict] = None) -> Any:
     except:
         raise HTTPException(status_code=500, detail="Viu balikin format bukan JSON")
 
-    # PENGAMAN ANTI-CRASH: Kadang Viu balikin string/null, bukan dict.
     if not isinstance(data, dict):
         raise HTTPException(status_code=500, detail="Format response Viu tidak dikenal.")
 
@@ -136,36 +135,24 @@ def health():
 
 @app.get("/api/home")
 def home():
-    """Mencoba API Viu. Jika gagal, menyedot data dari HTML halaman utama."""
     ckey = "viu:home"
     cached = kv_get(ckey)
     if cached: return json.loads(cached)
     
-    # 1. Coba jalur API resmi
     try:
         data = _call("/vod/home")
         if data and isinstance(data, dict):
             kv_set(ckey, json.dumps(data, ensure_ascii=False), ex=1800)
             return data
-    except Exception:
-        pass
+    except Exception: pass
 
-    # 2. Jika API ditolak, Scrape HTML (bypass)
     try:
         with Session(impersonate="chrome") as s:
             r = s.get(VIU_HOME, headers={"user-agent": UA}, timeout=15)
             if r.status_code == 200 and "not available in your country" not in r.text:
-                # Cari semua ID series di dalam HTML
                 series_ids = list(set(re.findall(r'"series_id":\s*"(\d+)"', r.text)))
-                # Ambil 20 ID pertama
                 fallback_list = [{"series_id": sid} for sid in series_ids[:20]]
-                
-                result = {
-                    "status": "success", 
-                    "method": "html_scrape",
-                    "message": "Data diambil dari halaman depan (API ditolak Viu)",
-                    "data": fallback_list
-                }
+                result = {"status": "success", "method": "html_scrape", "message": "Data dari halaman depan", "data": fallback_list}
                 if fallback_list:
                     kv_set(ckey, json.dumps(result, ensure_ascii=False), ex=1800)
                     return result
@@ -190,38 +177,30 @@ def series(series_id: str, refresh: bool = False):
 def episodes(series_id: str):
     return series(series_id)["episodes"]
 
+# --- ENDPOINT SEARCH (SUDAH DI-FIX) ---
 @app.get("/api/search")
-def search(q: str, size: int = 20):
-    ckey = f"viu:search:{hashlib.md5(q.encode()).hexdigest()}:{size}"
+def search(q: str):
+    ckey = f"viu:search:{hashlib.md5(q.encode()).hexdigest()}"
     cached = kv_get(ckey)
     if cached: return json.loads(cached)
 
-    attempts = [
-        ("/vod/search", {"q": q, "size": size}),
-        ("/vod/search", {"keyword": q, "size": size}),
-        ("/vod/product/search", {"q": q, "size": size}),
-        ("/vod/product/search", {"keyword": q, "size": size}),
-        ("/vod/search/product", {"q": q, "size": size}),
-        ("/vod/product-list", {"keyword": q, "size": size}),
-        ("/vod/product-list", {"search": q, "size": size}),
-    ]
-
-    for route, params in attempts:
-        try:
-            data = _call(route, params)
-            plist = data.get("product_list") or data.get("products") or []
-            if plist:
-                result = {"query": q, "count": len(plist), "product_list": plist}
-                kv_set(ckey, json.dumps(result, ensure_ascii=False), ex=3600)
-                return result
-        except Exception:
-            continue
-
-    return {"query": q, "count": 0, "product_list": [], "note": "Search kosong."}
+    # Pake endpoint /search/prediction dengan param keyword (sesuai temuan lu)
+    data = _call("/search/prediction", {"keyword": q})
+    
+    # Viu ngembaliin {"series": [...], "actor": [...]}
+    result = {
+        "query": q,
+        "series": data.get("series", []),
+        "actor": data.get("actor", [])
+    }
+    
+    if result["series"] or result["actor"]:
+        kv_set(ckey, json.dumps(result, ensure_ascii=False), ex=3600)
+        
+    return result
 
 @app.get("/api/browse")
 def browse(size: int = 20, page: int = 1, sort: str = "desc", filter_id: str = "1"):
-    """Coba browse generic. Viu ID biasanya pake filter_id (1=Movie, 2=Series)."""
     ckey = f"viu:browse:{filter_id}:{page}:{size}"
     cached = kv_get(ckey)
     if cached: return json.loads(cached)
