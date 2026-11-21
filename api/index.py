@@ -1,8 +1,8 @@
-# api/index.py — Viu Auto API (Proxy Rotator Edition)
-import os, json, hashlib, logging, re, random
+# api/index.py — Viu Auto API (Concurrent Proxy Edition)
+import os, json, hashlib, logging, re, random, asyncio
 from typing import Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, Query
-from curl_cffi import requests as creq
+from curl_cffi.requests import AsyncSession, Session
 import httpx
 
 logging.basicConfig(level=logging.INFO)
@@ -41,50 +41,59 @@ def kv_set(key: str, value: str, ex: int = 3600) -> None:
                   content=value, params={"expiration_ttl": str(ex)})
     except: pass
 
-# --- AUTO HARVEST DENGAN PROXY ROTATOR ---
-def auto_harvest_token() -> str:
-    log.info("Nyari token baru pake rotasi proxy...")
-    
-    # Ambil daftar proxy gratis dari GitHub
+# --- AUTO HARVEST DENGAN CONCURRENT PROXY ---
+async def test_proxy(proxy: str, headers: dict) -> Optional[str]:
+    try:
+        px = {"http": f"http://{proxy}", "https": f"http://{proxy}"}
+        async with AsyncSession(impersonate="chrome", proxies=px, timeout=6) as s:
+            # Tembak halaman depan Viu
+            r1 = await s.get(VIU_HOME, headers=headers)
+            if "not available in your country" not in r1.text:
+                m = re.search(r'(eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+)', r1.text)
+                if m: return m.group(1)
+            
+            # Tembak API Guest
+            guest_url = "https://api-gateway-global.viu.com/api/mobile?r=/vod/login/guest&platform_flag_label=web&area_id=1000&language_flag_id=8&ut=0&countryCode=ID"
+            r2 = await s.get(guest_url, headers=headers)
+            if r2.status_code == 200:
+                tok = r2.json().get("data", {}).get("token")
+                if tok: return tok
+    except Exception:
+        pass
+    return None
+
+async def auto_harvest_token_async() -> str:
+    log.info("Nyari token baru pake concurrent proxy...")
     proxies_list = []
     try:
-        r = httpx.get("https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt", timeout=10)
+        # Ambil proxy fresh dari ProxyScrape
+        r = httpx.get("https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&protocol=http&proxy_format=ipport&format=text", timeout=10)
         proxies_list = r.text.splitlines()
-        random.shuffle(proxies_list) # Acak biar dapet IP beda-beda
-        proxies_list = proxies_list[:30] # Coba 30 proxy pertama
+        random.shuffle(proxies_list)
+        proxies_list = proxies_list[:40] # Tembak 40 proxy sekaligus
     except:
         pass
         
-    headers = {"user-agent": UA, "accept-language": "id-ID,id;q=0.9"}
-    
-    for proxy in proxies_list:
-        proxy = proxy.strip()
-        if not proxy: continue
-        log.info(f"Coba proxy: {proxy}")
-        try:
-            px = {"http": f"http://{proxy}", "https": f"http://{proxy}"}
-            with creq.Session(impersonate="chrome", proxies=px) as s:
-                # Tembak halaman depan Viu
-                r1 = s.get(VIU_HOME, headers=headers, timeout=8)
-                if "not available in your country" not in r1.text:
-                    m = re.search(r'(eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+)', r1.text)
-                    if m:
-                        log.info(f"Sukses dapet token pake proxy {proxy}!")
-                        return m.group(1)
-                
-                # Tembak API Guest
-                guest_url = "https://api-gateway-global.viu.com/api/mobile?r=/vod/login/guest&platform_flag_label=web&area_id=1000&language_flag_id=8&ut=0&countryCode=ID"
-                r2 = s.get(guest_url, headers=headers, timeout=8)
-                if r2.status_code == 200:
-                    tok = r2.json().get("data", {}).get("token")
-                    if tok:
-                        log.info(f"Sukses dapet token pake proxy {proxy}!")
-                        return tok
-        except Exception:
-            continue
+    if not proxies_list:
+        return ""
 
-    # Kalau semua proxy mati, pake token asli dari lo (siapa tau masih idup)
-    return "eyJhbGciOiJBMTI4S1ciLCJlbmMiOiJBMTI4Q0JDLUhTMjU2In0.Hv2g6GGzyq-g35coFi7tGkUpXhtMZD5c2pnozynjhD6w7kUqIlFQoA.1ZF-h1ORbdpl6__sxza2Iw.N3YrDC25A1n25LaOAiLj3AycPUxM9ryiCHfInFRw8objq39NOCxfsC67gw0_q4rEPM8YYuVakwe1n55S8xuPcqQSx5f0z-7h1ZrFS_ABQKUDxnwHmw4L3qF1Nsmi_66CAzAwulCzs3o0ro2uR1Dc2fMM5yrfUDbe_davrV9ekRVwYkEZ0So2KqQb8ehd8mpmPPDaccpnw9x9U5PS_MImNma8710Ib6QW68vrLXRDjnQ.QCaYCMW4Cnk8hSSM0eUZMQ"
+    headers = {"user-agent": UA, "accept-language": "id-ID,id;q=0.9"}
+    tasks = [test_proxy(proxy.strip(), headers) for proxy in proxies_list]
+    
+    # Jalanin semua proxy barengan, ambil yang paling cepet
+    for coro in asyncio.as_completed(tasks):
+        tok = await coro
+        if tok:
+            log.info("Sukses dapet token pake proxy!")
+            return tok
+
+    return ""
+
+def auto_harvest_token() -> str:
+    try:
+        return asyncio.run(auto_harvest_token_async())
+    except:
+        return ""
 
 def _bearer() -> str:
     b = kv_get("viu:bearer")
@@ -99,13 +108,13 @@ def _call(route: str, params: Optional[Dict] = None) -> Any:
     if params: q.update(params)
     headers = {"accept": "application/json, text/plain, */*", "authorization": f"Bearer {_bearer()}", "user-agent": UA, "origin": "https://www.viu.com", "referer": "https://www.viu.com/"}
     
-    with creq.Session(impersonate="chrome") as s:
+    with Session(impersonate="chrome") as s:
         r = s.get(BASE, params=q, headers=headers, timeout=15)
         
     if r.status_code in (401, 403):
         kv_set("viu:bearer", "", ex=1)
         headers["authorization"] = f"Bearer {auto_harvest_token()}"
-        with creq.Session(impersonate="chrome") as s:
+        with Session(impersonate="chrome") as s:
             r = s.get(BASE, params=q, headers=headers, timeout=15)
 
     r.raise_for_status()
