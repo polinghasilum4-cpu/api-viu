@@ -36,6 +36,7 @@
     mix-blend-mode:overlay;
   }
 
+  /* ── HEADER ── */
   header{
     position:fixed;top:0;left:0;right:0;z-index:60;
     display:flex;align-items:center;gap:14px;
@@ -60,18 +61,20 @@
   .clock{font-variant-numeric:tabular-nums;font-size:13px;color:var(--muted);white-space:nowrap;display:none}
   @media(min-width:720px){.clock{display:block}}
 
+  /* ── HERO (DIKECILIN BIAR HASIL PENCARIAN KELIHATAN) ── */
   .hero{
-    position:relative;min-height:100dvh;display:flex;align-items:center;
-    padding:120px max(20px,5vw) 60px;
+    position:relative;min-height:60dvh;display:flex;align-items:center;
+    padding:100px max(20px,5vw) 40px;
     overflow:hidden;isolation:isolate;
   }
-  #orb{position:absolute;right:-8%;top:50%;transform:translateY(-50%);width:min(60vw,720px);height:min(60vw,720px);z-index:-1;opacity:.9;pointer-events:none}
-  @media(max-width:820px){#orb{right:-30%;top:20%;transform:none;width:110vw;height:110vw;opacity:.35}}
+  #orb{position:absolute;right:-10%;top:50%;transform:translateY(-50%);width:80vw;height:80vw;z-index:-1;opacity:.6;pointer-events:none}
+  @media(min-width:820px){#orb{right:-5%;width:min(60vw,600px);height:min(60vw,600px);opacity:.9}}
+  
   .hero-inner{max-width:1280px;margin:0 auto;width:100%}
   .hero-kicker{display:inline-flex;align-items:center;gap:8px;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:20px}
   .hero-kicker::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--accent,var(--amber));box-shadow:0 0 12px var(--accent,var(--amber));animation:pulse 2s infinite}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
-  .hero h1{font-size:clamp(38px,8vw,88px);font-weight:900;letter-spacing:-.045em;line-height:.95;margin-bottom:16px;max-width:14ch}
+  .hero h1{font-size:clamp(38px,8vw,72px);font-weight:900;letter-spacing:-.045em;line-height:.95;margin-bottom:16px;max-width:14ch}
   .hero h1 em{font-style:normal;background:linear-gradient(92deg,var(--accent,var(--amber)),var(--pink));-webkit-background-clip:text;background-clip:text;color:transparent}
   .hero p{font-size:clamp(15px,2vw,18px);color:var(--muted);max-width:46ch;margin-bottom:32px}
   .hero-actions{display:flex;gap:12px;flex-wrap:wrap}
@@ -81,16 +84,19 @@
   .btn-ghost{border:1px solid var(--line2);color:var(--fg)}
   .btn-ghost:hover{background:rgba(255,255,255,.06);border-color:var(--line2)}
 
+  /* ── MAIN CONTENT ── */
   main{padding:0 max(18px,4vw) 100px;max-width:1480px;margin:0 auto;position:relative;z-index:2}
-  .row{margin-bottom:44px}
+  .row{margin-bottom:44px;scroll-margin-top:80px} /* scroll-margin biar nggak ketutup header */
   .row-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:16px}
   .row-head h2{font-size:clamp(17px,2.4vw,22px);font-weight:700;letter-spacing:-.02em}
   .row-head span{font-size:12px;color:var(--muted)}
+  
   .rail{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(140px,180px);gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:6px;scrollbar-width:none}
   .rail::-webkit-scrollbar{display:none}
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:14px}
   @media(min-width:720px){.grid{grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:18px}}
 
+  /* ── CARDS ── */
   .card{position:relative;border-radius:var(--r);overflow:hidden;background:var(--bg2);cursor:pointer;scroll-snap-align:start;transition:transform .35s var(--ease),box-shadow .35s var(--ease);aspect-ratio:2/3}
   .card:hover{transform:translateY(-6px) scale(1.02);box-shadow:0 20px 40px rgba(0,0,0,.6),0 0 0 1px var(--line2)}
   .card img{width:100%;height:100%;object-fit:cover;transition:transform .6s var(--ease),opacity .4s}
@@ -107,6 +113,7 @@
   .skel{background:linear-gradient(90deg,#15151b 25%,#1e1e26 50%,#15151b 75%);background-size:200% 100%;animation:sh 1.4s infinite;border-radius:var(--r);aspect-ratio:2/3}
   @keyframes sh{0%{background-position:200% 0}100%{background-position:-200% 0}}
 
+  /* ── OVERLAY & MODAL ── */
   .overlay{position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.72);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);display:flex;align-items:center;justify-content:center;padding:20px;opacity:0;pointer-events:none;transition:opacity .3s var(--ease)}
   .overlay.open{opacity:1;pointer-events:auto}
   .sheet{width:min(920px,100%);max-height:92dvh;overflow-y:auto;border-radius:20px;background:var(--bg2);border:1px solid var(--line2);transform:translateY(20px) scale(.98);transition:transform .4s var(--ease);scrollbar-width:thin}
@@ -127,6 +134,7 @@
   .close-btn{position:absolute;top:14px;right:14px;z-index:5;width:36px;height:36px;border-radius:50%;background:rgba(0,0,0,.6);backdrop-filter:blur(10px);display:grid;place-items:center;border:1px solid var(--line2);transition:all .2s}
   .close-btn:hover{background:rgba(255,255,255,.15);transform:rotate(90deg)}
 
+  /* ── PLAYER ── */
   .player{position:fixed;inset:0;z-index:200;background:#000;display:none;flex-direction:column}
   .player.open{display:flex}
   .player video{width:100%;height:100%;object-fit:contain;background:#000}
@@ -141,6 +149,7 @@
   .spinner.on{display:block}
   @keyframes spin{to{transform:translate(-50%,-50%) rotate(360deg)}}
 
+  /* ── CONFIG ── */
   .cfg{width:min(440px,100%);padding:32px;border-radius:20px;background:var(--bg2);border:1px solid var(--line2)}
   .cfg h2{font-size:22px;font-weight:800;letter-spacing:-.02em;margin-bottom:8px}
   .cfg p{color:var(--muted);font-size:13px;margin-bottom:20px;line-height:1.6}
@@ -185,22 +194,26 @@
 </section>
 
 <main>
-  <section class="row" id="row-history" style="display:none">
-    <div class="row-head"><h2>Lanjut Nonton</h2><span id="history-count"></span></div>
-    <div class="rail" id="history-rail"></div>
-  </section>
-
+  <!-- Section Hasil Pencarian -->
   <section class="row" id="row-results" style="display:none">
     <div class="row-head"><h2 id="results-title">Hasil</h2><span id="results-count"></span></div>
     <div class="grid" id="results-grid"></div>
   </section>
 
+  <!-- Section Lanjut Nonton -->
+  <section class="row" id="row-history" style="display:none">
+    <div class="row-head"><h2>Lanjut Nonton</h2><span id="history-count"></span></div>
+    <div class="rail" id="history-rail"></div>
+  </section>
+
+  <!-- Section Trending -->
   <section class="row" id="row-trending">
     <div class="row-head"><h2>Trending Hari Ini</h2><span>realtime dari Viu</span></div>
     <div class="grid" id="trending-grid"></div>
   </section>
 </main>
 
+<!-- Detail Modal -->
 <div class="overlay" id="detail">
   <div class="sheet" role="dialog" aria-modal="true">
     <button class="close-btn" onclick="closeDetail()" aria-label="Tutup">
@@ -217,6 +230,7 @@
   </div>
 </div>
 
+<!-- Video Player -->
 <div class="player" id="player">
   <div class="spinner" id="spinner"></div>
   <div class="player-bar">
@@ -232,11 +246,12 @@
   <video id="video" controls playsinline crossorigin="anonymous"></video>
 </div>
 
+<!-- Config API Key -->
 <div class="overlay" id="cfg-overlay">
   <div class="cfg">
     <h2>Masuk dulu</h2>
     <p>Tempel API Key xs0Movie lo di sini. Kunci disimpen di perangkat ini doang.</p>
-    <input id="cfg-key" type="password" placeholder="X-API-Key…" autocomplete="off">
+    <input id="cfg-key" type="password" placeholder="X-API-Key (be5a...)" autocomplete="off">
     <button class="btn btn-primary" onclick="saveKey()">Simpan & Lanjut</button>
   </div>
 </div>
@@ -244,14 +259,20 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const API_BASE = ""; // Kosongin karena satu domain sama API
+const API_BASE = ""; 
 let API_KEY = localStorage.getItem("xs0.key") || "";
 
 async function api(path){
   const r = await fetch(API_BASE + path, {
     headers: { "X-API-Key": API_KEY, "accept": "application/json" }
   });
-  if(!r.ok) throw new Error("HTTP " + r.status);
+  if(!r.ok) {
+    if(r.status === 403) {
+      document.getElementById("cfg-overlay").classList.add("open"); // Buka modal kalo key salah
+      throw new Error("API Key salah/kosong");
+    }
+    throw new Error("HTTP " + r.status);
+  }
   return r.json();
 }
 
@@ -263,6 +284,7 @@ function toast(msg){
   t._h = setTimeout(()=>t.classList.remove("show"), 2400);
 }
 
+/* ── GREETING ── */
 const GREETINGS = {
   pagi:   { label:"pagi",   word:"pagi",   accent:"#ffb300", sub:"Kopi dulu, baru lanjut maraton.", tag:"Selamat pagi" },
   siang:  { label:"siang",  word:"siang",  accent:"#38e1ff", sub:"Jam istirahat. Waktunya satu episode.", tag:"Selamat siang" },
@@ -295,6 +317,7 @@ function updateGreeting(){
 setInterval(updateGreeting, 30000);
 updateGreeting();
 
+/* ── ORB 3D ── */
 let orbTheme = "#8b5cf6";
 const cvs = document.getElementById("orb");
 const ctx = cvs.getContext("2d");
@@ -315,18 +338,13 @@ const pts = [];
 for(let i=0;i<N;i++){
   const phi = Math.acos(1 - 2*(i+0.5)/N);
   const theta = Math.PI*(1+Math.sqrt(5))*i;
-  pts.push({
-    x: Math.cos(theta)*Math.sin(phi),
-    y: Math.sin(theta)*Math.sin(phi),
-    z: Math.cos(phi)
-  });
+  pts.push({ x: Math.cos(theta)*Math.sin(phi), y: Math.sin(theta)*Math.sin(phi), z: Math.cos(phi) });
 }
 const EDGES = [];
 for(let i=0;i<N;i++){
   for(let j=i+1;j<N;j++){
     const dx=pts[i].x-pts[j].x, dy=pts[i].y-pts[j].y, dz=pts[i].z-pts[j].z;
-    const d2 = dx*dx+dy*dy+dz*dz;
-    if(d2 < 0.075) EDGES.push([i,j]);
+    if((dx*dx+dy*dy+dz*dz) < 0.075) EDGES.push([i,j]);
   }
 }
 
@@ -351,27 +369,20 @@ function drawOrb(now){
     return { x: cx + x*R*persp, y: cy + y*R*persp, z, persp };
   });
 
-  ctx.lineWidth = 0.7;
-  ctx.strokeStyle = orbTheme;
+  ctx.lineWidth = 0.7; ctx.strokeStyle = orbTheme;
   for(const [i,j] of EDGES){
     const a = proj[i], b = proj[j];
-    const depth = (a.z + b.z) * 0.5;
-    ctx.globalAlpha = Math.max(0, 0.09 - depth*0.09);
-    ctx.beginPath();
-    ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y);
-    ctx.stroke();
+    ctx.globalAlpha = Math.max(0, 0.09 - ((a.z+b.z)*0.5)*0.09);
+    ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
   }
   for(const p of proj){
-    const size = Math.max(0.6, 2.6 * p.persp);
     ctx.globalAlpha = Math.max(0.08, 0.85 - p.z*0.35);
     ctx.fillStyle = orbTheme;
-    ctx.beginPath(); ctx.arc(p.x,p.y,size,0,6.283); ctx.fill();
+    ctx.beginPath(); ctx.arc(p.x,p.y,Math.max(0.6, 2.6 * p.persp),0,6.283); ctx.fill();
   }
   const grd = ctx.createRadialGradient(cx,cy,0,cx,cy,R*1.5);
-  grd.addColorStop(0, orbTheme + "22");
-  grd.addColorStop(1, "transparent");
-  ctx.globalAlpha = 1;
-  ctx.fillStyle = grd;
+  grd.addColorStop(0, orbTheme + "22"); grd.addColorStop(1, "transparent");
+  ctx.globalAlpha = 1; ctx.fillStyle = grd;
   ctx.beginPath(); ctx.arc(cx,cy,R*1.5,0,6.283); ctx.fill();
 
   requestAnimationFrame(drawOrb);
@@ -379,11 +390,14 @@ function drawOrb(now){
 requestAnimationFrame(drawOrb);
 document.addEventListener("visibilitychange", ()=>{ orbPaused = document.hidden; });
 
+/* ── HELPERS ── */
 function placeholder(seed){
   const h = [...String(seed)].reduce((a,c)=>a+c.charCodeAt(0),0)%360;
   return `linear-gradient(135deg,hsl(${h} 60% 22%),hsl(${(h+40)%360} 70% 12%))`;
 }
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
 
+/* ── TRENDING ── */
 async function loadTrending(){
   const grid = document.getElementById("trending-grid");
   grid.innerHTML = Array(8).fill('<div class="skel"></div>').join("");
@@ -397,7 +411,7 @@ async function loadTrending(){
       grid.appendChild(makeCard({ id, title: `Series ${id}`, index:i }));
     });
   }catch(e){
-    grid.innerHTML = `<div class="empty" style="grid-column:1/-1"><b>Belum bisa ambil trending</b>${e.message}. Coba cari manual pake kotak di atas.</div>`;
+    grid.innerHTML = `<div class="empty" style="grid-column:1/-1"><b>Belum bisa ambil trending</b>${e.message}</div>`;
   }
 }
 
@@ -416,8 +430,7 @@ function makeCard({ id, title, sub, index=0, poster }){
   return el;
 }
 
-function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
-
+/* ── SEARCH (AUTO SCROLL) ── */
 let searchT;
 const searchInput = document.getElementById("search");
 searchInput.addEventListener("input", ()=>{
@@ -432,10 +445,15 @@ async function runSearch(q){
   const grid = document.getElementById("results-grid");
   const title = document.getElementById("results-title");
   const count = document.getElementById("results-count");
+  
   row.style.display = "block";
   title.textContent = `Hasil: "${q}"`;
   count.textContent = "";
   grid.innerHTML = Array(6).fill('<div class="skel"></div>').join("");
+  
+  // FITUR BARU: Otomatis scroll ke hasil pencarian
+  row.scrollIntoView({ behavior: "smooth", block: "start" });
+
   try{
     const data = await api("/api/search?q=" + encodeURIComponent(q));
     const series = data.series || [];
@@ -449,24 +467,13 @@ async function runSearch(q){
     series.forEach((s,i)=>{
       grid.appendChild(makeCard({ id:s.id, title:s.name, sub: s.weight ? `skor ${s.weight}` : "", index:i }));
     });
-    if(actors.length){
-      actors.forEach((a,i)=>{
-        const el = document.createElement("div");
-        el.className = "card reveal";
-        el.style.transitionDelay = (i*30)+"ms";
-        el.innerHTML = `<div style="position:absolute;inset:0;background:${placeholder(a.name)}"></div>
-          <div class="card-badge">Aktor</div>
-          <div class="card-meta"><h3>${escapeHtml(a.name)}</h3></div>`;
-        grid.appendChild(el);
-      });
-    }
   }catch(e){
     grid.innerHTML = `<div class="empty" style="grid-column:1/-1"><b>Pencarian gagal</b>${escapeHtml(e.message)}</div>`;
   }
 }
 
+/* ── DETAIL & PLAYER ── */
 let currentSeries = null;
-
 async function openDetail(id, fallbackTitle){
   const overlay = document.getElementById("detail");
   document.getElementById("d-title").textContent = fallbackTitle || `Series ${id}`;
@@ -485,8 +492,7 @@ async function openDetail(id, fallbackTitle){
     const first = eps[0] || {};
     const title = (first.synopsis || fallbackTitle || `Series ${id}`).replace(/\s*-\s*Episode\s*\d+.*$/i,"").trim();
     document.getElementById("d-title").textContent = title;
-    document.getElementById("d-sub").textContent =
-      [first.series_category_name, `${eps.length} episode`].filter(Boolean).join(" · ");
+    document.getElementById("d-sub").textContent = [first.series_category_name, `${eps.length} episode`].filter(Boolean).join(" · ");
     document.getElementById("d-desc").textContent = first.description || first.synopsis || "Sinopsis belum tersedia.";
     if(first.cover_landscape_image_url){
       const img = document.getElementById("d-banner");
@@ -605,6 +611,7 @@ document.addEventListener("keydown", e=>{
   }
 });
 
+/* ── HISTORY ── */
 function saveHistory(seriesId, ep, title){
   const h = JSON.parse(localStorage.getItem("xs0.history") || "[]");
   const filtered = h.filter(x=>x.seriesId !== seriesId);
@@ -626,6 +633,7 @@ function renderHistory(){
   });
 }
 
+/* ── INIT ── */
 function saveKey(){
   const v = document.getElementById("cfg-key").value.trim();
   if(!v){ toast("Key kosong"); return; }
