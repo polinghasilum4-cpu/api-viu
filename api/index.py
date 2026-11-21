@@ -1,4 +1,4 @@
-# api/index.py — Viu Auto API (Concurrent Proxy Edition)
+# api/index.py — Viu Auto API (Final Edition)
 import os, json, hashlib, logging, re, random, asyncio
 from typing import Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, Query
@@ -46,13 +46,11 @@ async def test_proxy(proxy: str, headers: dict) -> Optional[str]:
     try:
         px = {"http": f"http://{proxy}", "https": f"http://{proxy}"}
         async with AsyncSession(impersonate="chrome", proxies=px, timeout=6) as s:
-            # Tembak halaman depan Viu
             r1 = await s.get(VIU_HOME, headers=headers)
             if "not available in your country" not in r1.text:
                 m = re.search(r'(eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+)', r1.text)
                 if m: return m.group(1)
             
-            # Tembak API Guest
             guest_url = "https://api-gateway-global.viu.com/api/mobile?r=/vod/login/guest&platform_flag_label=web&area_id=1000&language_flag_id=8&ut=0&countryCode=ID"
             r2 = await s.get(guest_url, headers=headers)
             if r2.status_code == 200:
@@ -66,11 +64,10 @@ async def auto_harvest_token_async() -> str:
     log.info("Nyari token baru pake concurrent proxy...")
     proxies_list = []
     try:
-        # Ambil proxy fresh dari ProxyScrape
         r = httpx.get("https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&protocol=http&proxy_format=ipport&format=text", timeout=10)
         proxies_list = r.text.splitlines()
         random.shuffle(proxies_list)
-        proxies_list = proxies_list[:40] # Tembak 40 proxy sekaligus
+        proxies_list = proxies_list[:40]
     except:
         pass
         
@@ -80,7 +77,6 @@ async def auto_harvest_token_async() -> str:
     headers = {"user-agent": UA, "accept-language": "id-ID,id;q=0.9"}
     tasks = [test_proxy(proxy.strip(), headers) for proxy in proxies_list]
     
-    # Jalanin semua proxy barengan, ambil yang paling cepet
     for coro in asyncio.as_completed(tasks):
         tok = await coro
         if tok:
@@ -100,7 +96,7 @@ def _bearer() -> str:
     if b: return b
     b = auto_harvest_token()
     if b:
-        kv_set("viu:bearer", b, ex=43200) # Simpen 12 jam
+        kv_set("viu:bearer", b, ex=43200)
     return b
 
 def _call(route: str, params: Optional[Dict] = None) -> Any:
@@ -149,14 +145,46 @@ def series(series_id: str, refresh: bool = False):
     kv_set(ckey, json.dumps(result, ensure_ascii=False), ex=21600)
     return result
 
+@app.get("/api/episodes/{series_id}")
+def episodes(series_id: str):
+    return series(series_id)["episodes"]
+
 @app.get("/api/search")
 def search(q: str, size: int = 20):
     ckey = f"viu:search:{hashlib.md5(q.encode()).hexdigest()}:{size}"
     cached = kv_get(ckey)
     if cached: return json.loads(cached)
-    data = _call("/vod/product-list", {"q": q, "size": size, "sort": "desc"})
-    kv_set(ckey, json.dumps(data, ensure_ascii=False), ex=3600)
-    return data
+
+    attempts = [
+        ("/vod/search", {"q": q, "size": size}),
+        ("/vod/search", {"keyword": q, "size": size}),
+        ("/vod/product/search", {"q": q, "size": size}),
+        ("/vod/product/search", {"keyword": q, "size": size}),
+        ("/vod/search/product", {"q": q, "size": size}),
+        ("/vod/product-list", {"keyword": q, "size": size}),
+        ("/vod/product-list", {"search": q, "size": size}),
+    ]
+
+    last_err = None
+    for route, params in attempts:
+        try:
+            data = _call(route, params)
+            plist = data.get("product_list") or data.get("products") or []
+            if plist:
+                result = {"query": q, "count": len(plist), "product_list": plist}
+                kv_set(ckey, json.dumps(result, ensure_ascii=False), ex=3600)
+                return result
+        except HTTPException as e:
+            last_err = e.detail
+            continue
+
+    return {
+        "query": q,
+        "count": 0,
+        "product_list": [],
+        "note": "Endpoint search Viu tidak ditemukan. Pakai /api/browse atau /api/series.",
+        "last_error": last_err,
+    }
 
 @app.get("/api/browse")
 def browse(category: str = Query(None), page: int = 1, size: int = 20, sort: str = "desc", filter_id: int = None):
