@@ -1,8 +1,7 @@
 # api/index.py — Viu Auto API (Fortress Edition)
-import os, json, hashlib, logging, re, random, asyncio, time, secrets
+import os, json, hashlib, logging, re, random, asyncio, time, secrets, threading
 from typing import Optional, Dict, Any
-from fastapi import FastAPI, HTTPException, Depends, Security
-from fastapi.security.api_key import APIKeyHeader
+from fastapi import FastAPI, HTTPException, Depends, Header, Request
 from curl_cffi.requests import AsyncSession, Session
 import httpx
 from urllib.parse import quote
@@ -21,19 +20,81 @@ COMMON = {
 UA = ("Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/157.0.0.0 Mobile Safari/537.36")
 
-# --- LAPIS 1: SECURITY (ANTI-BRUTE & TIMING ATTACK) ---
+# --- OPTIONAL API KEY: browser clients may call the public API without a key ---
 API_KEY_NAME = "X-API-Key"
-api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+RATE_LIMIT_WINDOW = 60
+RATE_LIMITS = {
+    "default": 60,
+    "/api/search": 20,
+    "/api/series/": 30,
+    "/api/play/": 12,
+}
+ENABLE_KV_RATE_LIMIT = os.environ.get("ENABLE_KV_RATE_LIMIT", "false").lower() == "true"
+_rate_lock = threading.Lock()
+_rate_local: Dict[str, tuple] = {}
 
-def verify_api_key(api_key: str = Security(api_key_header)):
-    expected_key = os.environ.get("MY_API_KEY", "")
-    if not expected_key:
-        raise HTTPException(status_code=500, detail="Server Error: MY_API_KEY belum di-set di Vercel")
-    
-    # secrets.compare_digest cegah Timing Attack
-    if not api_key or not secrets.compare_digest(api_key, expected_key):
-        time.sleep(1) # Kasih delay buat bot yang nyoba brute force
-        raise HTTPException(status_code=403, detail="Akses ditolak. Jangan macam-macam.")
+def _rate_limit(request: Request) -> None:
+    # Vercel forwards the visitor IP in X-Forwarded-For. Hash it before using it
+    # as a KV key so raw IP addresses are not stored in Cloudflare KV.
+    forwarded_for = request.headers.get("x-forwarded-for", "")
+    client_ip = forwarded_for.split(",", 1)[0].strip()
+    if not client_ip and request.client:
+        client_ip = request.client.host
+    if not client_ip:
+        client_ip = "unknown"
+
+    path = request.url.path
+    route_group, limit = next(
+        ((prefix, n) for prefix, n in RATE_LIMITS.items()
+         if prefix != "default" and path.startswith(prefix)),
+        ("default", RATE_LIMITS["default"]),
+    )
+    now = int(time.time())
+    window = now // RATE_LIMIT_WINDOW
+    identity = hashlib.sha256(client_ip.encode()).hexdigest()[:24]
+    bucket = f"xs0:rate:{identity}:{route_group}:{window}"
+
+    # Local counter gives an immediate per-instance limit. Cloudflare KV can be
+    # opted into for an approximate cross-instance counter (it is not atomic).
+    with _rate_lock:
+        count, expires = _rate_local.get(bucket, (0, now + RATE_LIMIT_WINDOW))
+        if expires <= now:
+            count = 0
+            expires = now + RATE_LIMIT_WINDOW
+        count += 1
+        _rate_local[bucket] = (count, expires)
+        if len(_rate_local) > 5000:
+            for old_bucket, (_, old_expiry) in list(_rate_local.items()):
+                if old_expiry <= now:
+                    _rate_local.pop(old_bucket, None)
+
+    kv_count = 0
+    if ENABLE_KV_RATE_LIMIT and CF_ACCOUNT and CF_KV_ID and CF_TOKEN:
+        try:
+            kv_count = int(kv_get(bucket) or 0) + 1
+            kv_set(bucket, str(kv_count), ex=RATE_LIMIT_WINDOW + 5)
+        except (TypeError, ValueError):
+            kv_count = 0
+
+    if max(count, kv_count) > limit:
+        retry_after = RATE_LIMIT_WINDOW - (now % RATE_LIMIT_WINDOW)
+        raise HTTPException(
+            status_code=429,
+            detail="Terlalu banyak permintaan. Coba lagi sebentar.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+def verify_api_key(
+    request: Request,
+    api_key: Optional[str] = Header(default=None, alias=API_KEY_NAME),
+):
+    # The key remains optional for the frontend. If a client chooses to send it,
+    # reject invalid values rather than silently accepting a bad credential.
+    if api_key:
+        expected_key = os.environ.get("MY_API_KEY", "")
+        if not expected_key or not secrets.compare_digest(api_key, expected_key):
+            raise HTTPException(status_code=403, detail="API Key tidak valid.")
+    _rate_limit(request)
     return api_key
 
 # --- CLOUDFLARE KV SETUP ---
@@ -153,7 +214,7 @@ def _call(route: str, params: Optional[Dict] = None, retries: int = 2) -> Any:
 app = FastAPI(title="Viu API", description="Protected API")
 
 @app.get("/")
-def root(): return {"status": "ok", "message": "API aktif. Gunakan header X-API-Key."}
+def root(): return {"status": "ok", "message": "API aktif."}
 
 # --- ENDPOINTS ---
 
