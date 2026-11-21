@@ -1,5 +1,5 @@
-# api/index.py — Viu Auto API (Attack & Defend Edition)
-import os, json, hashlib, logging, re, random, asyncio, time
+# api/index.py — Viu Auto API (Fortress Edition)
+import os, json, hashlib, logging, re, random, asyncio, time, secrets
 from typing import Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, Depends, Security
 from fastapi.security.api_key import APIKeyHeader
@@ -21,14 +21,19 @@ COMMON = {
 UA = ("Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/157.0.0.0 Mobile Safari/537.36")
 
-# --- LAPIS 1: API KEY SECURITY ---
+# --- LAPIS 1: SECURITY (ANTI-BRUTE & TIMING ATTACK) ---
 API_KEY_NAME = "X-API-Key"
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
 
 def verify_api_key(api_key: str = Security(api_key_header)):
-    expected_key = os.environ.get("MY_API_KEY", "rahasia-negara")
-    if api_key != expected_key:
-        raise HTTPException(status_code=403, detail="Akses ditolak. API Key salah.")
+    expected_key = os.environ.get("MY_API_KEY", "")
+    if not expected_key:
+        raise HTTPException(status_code=500, detail="Server Error: MY_API_KEY belum di-set di Vercel")
+    
+    # secrets.compare_digest cegah Timing Attack
+    if not api_key or not secrets.compare_digest(api_key, expected_key):
+        time.sleep(1) # Kasih delay buat bot yang nyoba brute force
+        raise HTTPException(status_code=403, detail="Akses ditolak. Jangan macam-macam.")
     return api_key
 
 # --- CLOUDFLARE KV SETUP ---
@@ -107,7 +112,7 @@ def _bearer() -> str:
     if b: kv_set("viu:bearer", b, ex=43200)
     return b
 
-# --- LAPIS 2: EXPONENTIAL BACKOFF (ANTI-BAN) ---
+# --- LAPIS 2: EXPONENTIAL BACKOFF ---
 def _call(route: str, params: Optional[Dict] = None, retries: int = 2) -> Any:
     q = {**COMMON, "r": route}
     if params: q.update(params)
@@ -123,7 +128,6 @@ def _call(route: str, params: Optional[Dict] = None, retries: int = 2) -> Any:
                     r = s.get(BASE, params=q, headers=headers, timeout=15)
                 
                 if r.status_code == 429:
-                    log.warning(f"Kena Rate Limit (429)! Nunggu {2 ** attempt} detik...")
                     time.sleep(2 ** attempt)
                     continue
                 
@@ -148,9 +152,10 @@ def _call(route: str, params: Optional[Dict] = None, retries: int = 2) -> Any:
 
 app = FastAPI(title="Viu API", description="Protected API")
 
-# Semua route di bawah ini wajib pake X-API-Key di header
 @app.get("/")
 def root(): return {"status": "ok", "message": "API aktif. Gunakan header X-API-Key."}
+
+# --- ENDPOINTS ---
 
 @app.get("/api/health", dependencies=[Depends(verify_api_key)])
 def health():
@@ -179,7 +184,7 @@ def search(q: str):
     keyword_encoded = quote(q)
     url = f"{BASE}?platform_flag_label=web&area_id=1000&language_flag_id=8&ut=0&platformFlagLabel=web&areaId=1000&languageFlagId=8&countryCode=ID&r=%2Fsearch%2Fprediction&keyword={keyword_encoded}"
 
-    # Spoofing IP (Trik yang berhasil)
+    # Spoof IP (Trik andalan)
     fake_ip = f"114.122.{random.randint(1,255)}.{random.randint(1,255)}"
     headers_spoof = {**headers, "x-forwarded-for": fake_ip, "x-real-ip": fake_ip}
     
