@@ -1,9 +1,10 @@
-# api/index.py — Viu Auto API (ID Proxy Search)
+# api/index.py — Viu Auto API (Spoof IP + Triple Proxy)
 import os, json, hashlib, logging, re, random, asyncio
 from typing import Optional, Dict, Any
 from fastapi import FastAPI, HTTPException
 from curl_cffi.requests import AsyncSession, Session
 import httpx
+from urllib.parse import quote
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("viu")
@@ -41,18 +42,32 @@ def kv_set(key: str, value: str, ex: int = 3600) -> None:
                   content=value, params={"expiration_ttl": str(ex)})
     except: pass
 
-# --- PROXY ROTATOR ---
+# --- MULTI-SOURCE PROXY FETCHER ---
 async def get_id_proxies():
     proxies = []
     try:
-        # Ambil proxy khusus Indonesia dari ProxyScrape
-        url = "https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&protocol=http&proxy_format=ipport&format=text&country=ID"
-        r = httpx.get(url, timeout=10)
-        proxies = r.text.splitlines()
-        random.shuffle(proxies)
+        r1 = httpx.get("https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&protocol=http&proxy_format=ipport&format=text&country=ID", timeout=5)
+        proxies.extend(r1.text.splitlines())
     except: pass
-    return proxies[:20]
+    try:
+        r2 = httpx.get("https://proxylist.geonode.com/api/proxy-list?limit=50&page=1&sort_by=lastChecked&sort_type=desc&country=ID", timeout=5)
+        for item in r2.json().get("data", []):
+            proxies.append(f"{item['ip']}:{item['port']}")
+    except: pass
+    try:
+        r3 = httpx.get("http://pubproxy.com/api/proxy?country=ID&format=txt&limit=10", timeout=5)
+        proxies.extend(r3.text.splitlines())
+    except: pass
+    
+    cleaned = []
+    for p in proxies:
+        p = p.strip()
+        if p and ":" in p:
+            cleaned.append(p)
+    random.shuffle(cleaned)
+    return list(set(cleaned))[:20]
 
+# --- TOKEN HARVESTER ---
 async def test_proxy(proxy: str, headers: dict) -> Optional[str]:
     try:
         px = {"http": f"http://{proxy}", "https": f"http://{proxy}"}
@@ -61,7 +76,7 @@ async def test_proxy(proxy: str, headers: dict) -> Optional[str]:
             if "not available in your country" not in r1.text:
                 m = re.search(r'(eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+)', r1.text)
                 if m: return m.group(1)
-            guest_url = "https://api-gateway-global.viu.com/api/mobile?r=/vod/login/guest&platform_flag_label=web&area_id=1000&language_flag_id=8&ut=0&countryCode=ID"
+            guest_url = f"{BASE}?r=/vod/login/guest&platform_flag_label=web&area_id=1000&language_flag_id=8&ut=0&countryCode=ID"
             r2 = await s.get(guest_url, headers=headers)
             if r2.status_code == 200:
                 tok = r2.json().get("data", {}).get("token")
@@ -136,7 +151,6 @@ def search(q: str):
     if cached: return json.loads(cached)
 
     token = _bearer()
-    
     headers = {
         "sec-ch-ua-platform": '"Android"',
         "authorization": f"Bearer {token}",
@@ -149,48 +163,55 @@ def search(q: str):
         "accept-language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
     }
     
-    keyword_encoded = q.replace(" ", "+")
+    keyword_encoded = quote(q)
     url = f"{BASE}?platform_flag_label=web&area_id=1000&language_flag_id=8&ut=0&platformFlagLabel=web&areaId=1000&languageFlagId=8&countryCode=ID&r=%2Fsearch%2Fprediction&keyword={keyword_encoded}"
-    
-    # 1. Coba koneksi langsung dulu (kalo hoki dapet ID)
+
+    # TRIK 1: SPOOF IP HEADER (Tanpa Proxy)
+    fake_ip = f"114.122.{random.randint(1,255)}.{random.randint(1,255)}"
+    headers_spoof = {
+        **headers,
+        "x-forwarded-for": fake_ip,
+        "x-real-ip": fake_ip,
+        "x-viu-ip": fake_ip
+    }
     try:
         with Session(impersonate="chrome") as s:
-            r = s.get(url, headers=headers, timeout=10)
-        data = r.json()
-        if data.get("data", {}).get("series"):
-            result = {"query": q, "series": data["data"]["series"], "actor": data["data"].get("actor", [])}
-            kv_set(ckey, json.dumps(result, ensure_ascii=False), ex=3600)
-            return result
+            r = s.get(url, headers=headers_spoof, timeout=10)
+            data = r.json()
+            area_code = data.get("server", {}).get("area", {}).get("country", {}).get("code")
+            if area_code == "ID" and (data.get("data", {}).get("series") or data.get("data", {}).get("actor")):
+                result = {
+                    "query": q, "method": "spoofed",
+                    "series": data.get("data", {}).get("series", []),
+                    "actor": data.get("data", {}).get("actor", [])
+                }
+                kv_set(ckey, json.dumps(result, ensure_ascii=False), ex=3600)
+                return result
     except Exception: pass
 
-    # 2. Kalo gagal/kosong, tembak pake Proxy ID
-    log.info("Search direct gagal, nyoba pake proxy ID...")
+    # TRIK 2: PAKAI PROXY ID
     proxies = asyncio.run(get_id_proxies())
-    
     for proxy in proxies:
         try:
             px = {"http": f"http://{proxy}", "https": f"http://{proxy}"}
             with Session(impersonate="chrome", proxies=px) as s:
                 r = s.get(url, headers=headers, timeout=8)
             data = r.json()
-            
-            # Cek apakah beneran dapet ID
             area_code = data.get("server", {}).get("area", {}).get("country", {}).get("code")
             if area_code == "ID":
                 result_data = data.get("data", {})
-                result = {
-                    "query": q,
-                    "series": result_data.get("series", []),
-                    "actor": result_data.get("actor", [])
-                }
-                if result["series"] or result["actor"]:
+                if result_data.get("series") or result_data.get("actor"):
+                    result = {
+                        "query": q, "method": "proxy",
+                        "series": result_data.get("series", []),
+                        "actor": result_data.get("actor", [])
+                    }
                     kv_set(ckey, json.dumps(result, ensure_ascii=False), ex=3600)
-                    log.info(f"Search sukses pake proxy {proxy}")
                     return result
         except Exception:
             continue
 
-    return {"query": q, "series": [], "actor": [], "note": "Proxy ID sedang down, coba lagi nanti."}
+    return {"query": q, "series": [], "actor": [], "note": "Semua trik gagal (Spoof & Proxy)."}
 
 @app.get("/api/home")
 def home():
