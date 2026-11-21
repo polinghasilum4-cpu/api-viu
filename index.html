@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0a0d">
+<title>xs0Movie</title>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
+<style>
+  :root{
+    --bg:#0a0a0d; --bg2:#141419; --fg:#f5f5f7; --muted:#8a8a95;
+    --line:rgba(255,255,255,.08); --line2:rgba(255,255,255,.15);
+    --amber:#ffb300; --pink:#ff2d78; --accent:#8b5cf6;
+    --r:12px; --ease:cubic-bezier(.2,.7,.2,1);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,sans-serif;overflow-x:hidden}
+  body{min-height:100dvh;line-height:1.5;display:flex;flex-direction:column}
+  ::selection{background:var(--amber);color:#000}
+  button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+  input{font:inherit;color:inherit;background:none;border:none;outline:none}
+
+  /* HEADER */
+  header{position:fixed;top:0;left:0;right:0;z-index:60;display:flex;align-items:center;gap:16px;padding:14px max(20px,env(safe-area-inset-left)) 14px max(20px,env(safe-area-inset-right));background:rgba(10,10,13,.8);backdrop-filter:blur(20px);transition:background .3s var(--ease);border-bottom:1px solid transparent}
+  header.solid{background:rgba(10,10,13,.95);border-bottom:1px solid var(--line)}
+  .logo{font-weight:900;font-size:22px;letter-spacing:-.04em;display:flex;align-items:center;gap:2px;cursor:pointer}
+  .logo b{background:linear-gradient(92deg,var(--amber),var(--pink));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .logo span{opacity:.9}
+  .search-wrap{flex:1;max-width:500px;position:relative;margin-left:auto}
+  .search-wrap input{width:100%;padding:10px 16px 10px 40px;border-radius:999px;background:rgba(255,255,255,.08);border:1px solid var(--line);font-size:14px;transition:all .2s}
+  .search-wrap input:focus{background:rgba(255,255,255,.12);border-color:var(--line2);box-shadow:0 0 0 3px rgba(255,179,0,.15)}
+  .search-wrap svg{position:absolute;left:14px;top:50%;transform:translateY(-50%);opacity:.5}
+
+  /* VIEWS */
+  .view{display:none;padding-top:80px;animation:fadeIn .3s var(--ease);width:100%;flex:1}
+  .view.active{display:block}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+  /* BANNER */
+  .top-banner{display:flex;align-items:center;justify-content:space-between;padding:16px 24px;max-width:1480px;margin-inline:auto;width:100%;gap:12px;flex-wrap:wrap}
+  .greeting{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500;color:var(--muted)}
+  .greeting::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px var(--accent);animation:pulse 2s infinite}
+  .greeting b{color:var(--fg);font-weight:700;text-transform:capitalize}
+  @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.8)}}
+  .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:999px;background:rgba(255,255,255,.08);border:1px solid var(--line2);font-size:13px;font-weight:600;transition:all .2s}
+  .btn:hover{background:var(--fg);color:#000;transform:translateY(-1px)}
+
+  /* MAIN CONTENT */
+  main{padding:0 max(20px,4vw) 80px;max-width:1480px;margin:0 auto;width:100%}
+  .row{margin-bottom:36px}
+  .row-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:16px}
+  .row-head h2{font-size:clamp(17px,2.5vw,22px);font-weight:700;letter-spacing:-.02em}
+  .row-head span{font-size:12px;color:var(--muted)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(135px,1fr));gap:16px}
+  @media(min-width:768px){.grid{grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:24px}}
+
+  /* CARDS */
+  .card{position:relative;border-radius:var(--r);overflow:hidden;background:var(--bg2);cursor:pointer;transition:transform .3s var(--ease),box-shadow .3s var(--ease);aspect-ratio:2/3;border:1px solid var(--line)}
+  .card:hover{transform:translateY(-4px);box-shadow:0 12px 24px rgba(0,0,0,.6),0 0 0 1px var(--line2)}
+  .card::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 50%,rgba(0,0,0,.95));pointer-events:none}
+  .card-meta{position:absolute;left:12px;right:12px;bottom:12px;z-index:2}
+  .card-meta h3{font-size:13px;font-weight:600;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .card-badge{position:absolute;top:10px;left:10px;z-index:2;font-size:10px;font-weight:800;padding:4px 8px;border-radius:6px;background:rgba(0,0,0,.6);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.1)}
+  
+  /* STATES */
+  .empty{text-align:center;padding:60px 20px;color:var(--muted);font-size:14px;border:1px dashed var(--line);border-radius:var(--r);grid-column:1/-1}
+  .empty b{display:block;color:var(--fg);font-size:16px;margin-bottom:6px}
+  .skel{background:linear-gradient(90deg,#141419 25%,#1c1c24 50%,#141419 75%);background-size:200% 100%;animation:sh 1.5s infinite;border-radius:var(--r);aspect-ratio:2/3}
+  @keyframes sh{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
+  /* MODAL DETAIL */
+  .overlay{position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.8);backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:center;padding:20px;opacity:0;pointer-events:none;transition:opacity .3s var(--ease)}
+  .overlay.open{opacity:1;pointer-events:auto}
+  .sheet{width:min(900px,100%);max-height:90dvh;overflow-y:auto;border-radius:20px;background:#111;border:1px solid var(--line2);transform:translateY(20px);transition:transform .3s var(--ease);scrollbar-width:thin}
+  .overlay.open .sheet{transform:none}
+  .sheet-banner{position:relative;height:220px;background:#000;overflow:hidden}
+  .sheet-banner img{width:100%;height:100%;object-fit:cover;filter:blur(4px) brightness(.4);transform:scale(1.1)}
+  .sheet-banner::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 20%,#111)}
+  .sheet-body{padding:0 24px 24px;margin-top:-60px;position:relative;z-index:2}
+  .sheet-title{font-size:clamp(22px,4vw,32px);font-weight:800;letter-spacing:-.02em;margin-bottom:8px}
+  .sheet-sub{color:var(--muted);font-size:13px;margin-bottom:16px;font-weight:500}
+  .sheet-desc{font-size:14px;line-height:1.6;color:#ccc;margin-bottom:24px;max-width:70ch}
+  .eps-head{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:12px;font-weight:700}
+  .eps{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px}
+  .ep{padding:12px;border-radius:10px;background:rgba(255,255,255,.05);border:1px solid var(--line);text-align:left;transition:all .2s}
+  .ep:hover{background:var(--accent);color:#000;border-color:var(--accent);transform:translateY(-2px)}
+  .ep b{display:block;font-weight:800;font-size:14px}
+  .ep small{font-size:11px;opacity:.7}
+  .close-btn{position:absolute;top:16px;right:16px;z-index:5;width:36px;height:36px;border-radius:50%;background:rgba(0,0,0,.6);backdrop-filter:blur(8px);display:grid;place-items:center;border:1px solid var(--line2);transition:all .2s}
+  .close-btn:hover{transform:rotate(90deg);background:rgba(255,255,255,.2)}
+
+  /* PLAYER */
+  .player{position:fixed;inset:0;z-index:200;background:#000;display:none;flex-direction:column}
+  .player.open{display:flex}
+  .player video{width:100%;height:100%;object-fit:contain}
+  .player-bar{position:absolute;top:0;left:0;right:0;padding:16px 20px;display:flex;align-items:center;gap:16px;background:linear-gradient(180deg,rgba(0,0,0,.9) 0%,transparent 100%);z-index:5}
+  .player-title{font-size:15px;font-weight:600;flex:1;text-shadow:0 2px 4px #000}
+  .player-nav{display:flex;gap:8px}
+  .player-nav button{padding:8px 16px;border-radius:8px;background:rgba(255,255,255,.15);font-size:13px;font-weight:600;transition:background .2s}
+  .player-nav button:hover{background:rgba(255,255,255,.3)}
+  .player-nav button:disabled{opacity:.3;cursor:not-allowed}
+  .spinner{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:40px;height:40px;border:3px solid rgba(255,255,255,.1);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;display:none;z-index:3}
+  .spinner.on{display:block}
+  @keyframes spin{to{transform:translate(-50%,-50%) rotate(360deg)}}
+
+  /* CONFIG & TOAST */
+  .cfg{width:min(400px,100%);padding:32px;border-radius:24px;background:#111;border:1px solid var(--line2);text-align:center}
+  .cfg h2{font-size:24px;font-weight:800;margin-bottom:8px}
+  .cfg p{color:var(--muted);font-size:13px;margin-bottom:24px;line-height:1.6}
+  .cfg input{width:100%;padding:14px 16px;border-radius:12px;background:rgba(255,255,255,.05);border:1px solid var(--line2);font-size:15px;font-family:ui-monospace,monospace;margin-bottom:16px;text-align:center}
+  .cfg input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(139,92,246,.2)}
+  .btn-save{width:100%;padding:14px;border-radius:12px;background:var(--fg);color:#000;font-weight:700;font-size:15px;transition:all .2s}
+  .btn-save:hover{background:var(--accent);color:#fff}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translate(-50%,100px);z-index:300;padding:12px 24px;border-radius:999px;background:#222;border:1px solid var(--line2);font-size:13px;font-weight:500;box-shadow:0 10px 40px rgba(0,0,0,.8);transition:transform .3s var(--ease);pointer-events:none}
+  .toast.show{transform:translate(-50%,0)}
+</style>
+</head>
+<body>
+
+<header id="hdr">
+  <div class="logo" onclick="switchView('home')"><span>xs0</span><b>Movie</b></div>
+  <div class="search-wrap">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+    <input id="search" type="search" placeholder="Cari drama, film, anime..." autocomplete="off" spellcheck="false">
+  </div>
+</header>
+
+<!-- VIEW: HOME -->
+<div class="view active" id="view-home">
+  <div class="top-banner">
+    <div class="greeting">Selamat <b id="greet-time">Malam</b></div>
+    <button class="btn" id="btn-trending">Lihat Trending</button>
+  </div>
+  
+  <main>
+    <section class="row" id="row-history" style="display:none">
+      <div class="row-head"><h2>Lanjut Nonton</h2></div>
+      <div class="grid" id="history-grid"></div>
+    </section>
+
+    <section class="row">
+      <div class="row-head"><h2>Pilihan Hari Ini</h2><span>dari Viu</span></div>
+      <div class="grid" id="home-grid"></div>
+    </section>
+  </main>
+</div>
+
+<!-- VIEW: SEARCH -->
+<div class="view" id="view-search">
+  <main>
+    <section class="row">
+      <div class="row-head"><h2 id="results-title">Hasil Pencarian</h2><span id="results-count"></span></div>
+      <div class="grid" id="results-grid"></div>
+    </section>
+  </main>
+</div>
+
+<!-- MODAL DETAIL -->
+<div class="overlay" id="detail">
+  <div class="sheet" role="dialog" aria-modal="true">
+    <button class="close-btn" onclick="closeDetail()" aria-label="Tutup">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+    <div class="sheet-banner"><img id="d-banner" alt="" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs="></div>
+    <div class="sheet-body">
+      <h2 class="sheet-title" id="d-title">—</h2>
+      <div class="sheet-sub" id="d-sub">—</div>
+      <p class="sheet-desc" id="d-desc">—</p>
+      <div class="eps-head">Daftar Episode</div>
+      <div class="eps" id="d-eps"></div>
+    </div>
+  </div>
+</div>
+
+<!-- PLAYER -->
+<div class="player" id="player">
+  <div class="spinner" id="spinner"></div>
+  <div class="player-bar">
+    <button onclick="closePlayer()" style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.15);display:grid;place-items:center">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+    <div class="player-title" id="p-title">—</div>
+    <div class="player-nav">
+      <button id="p-prev" onclick="prevEp()">‹ Prev</button>
+      <button id="p-next" onclick="nextEp()">Next ›</button>
+    </div>
+  </div>
+  <video id="video" controls playsinline crossorigin="anonymous"></video>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API_BASE = ""; 
+
+// --- CORE HTTP ---
+async function apiFetch(path, options = {}) {
+  const headers = { "accept": "application/json", ...options.headers };
+  const res = await fetch(API_BASE + path, { ...options, headers });
+  if (!res.ok) {
+    if (res.status === 403 || res.status === 401) {
+      throw new Error("Akses API ditolak");
+    }
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.detail || `HTTP Error ${res.status}`);
+  }
+  return res.json();
+}
+
+function toast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 3000);
+}
+
+// --- NAVIGASI ---
+function switchView(id) {
+  document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
+  document.getElementById('view-' + id).classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  if (id === 'home') document.getElementById('search').value = '';
+}
+
+document.getElementById('btn-trending').addEventListener('click', () => switchView('search'));
+
+// --- GREETING ---
+function updateGreeting() {
+  const h = new Date(Date.now() + (new Date().getTimezoneOffset() * 60000) + 7 * 3600000).getHours();
+  let str = "Malam", color = "#8b5cf6";
+  if (h >= 4 && h < 11) { str = "Pagi"; color = "#ffb300"; }
+  else if (h >= 11 && h < 15) { str = "Siang"; color = "#38e1ff"; }
+  else if (h >= 15 && h < 18) { str = "Sore"; color = "#ff7a45"; }
+  document.getElementById("greet-time").textContent = str;
+  document.documentElement.style.setProperty("--accent", color);
+}
+updateGreeting(); setInterval(updateGreeting, 60000);
+
+// --- RENDER HELPERS ---
+function placeholder(title) {
+  const h = [...String(title)].reduce((a, c) => a + c.charCodeAt(0), 0) % 360;
+  return `linear-gradient(135deg,hsl(${h} 60% 20%),hsl(${(h + 40) % 360} 70% 8%))`;
+}
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+
+function createCard(id, title, sub, index = 0) {
+  const el = document.createElement("div");
+  el.className = "card";
+  el.innerHTML = `
+    <div style="position:absolute;inset:0;background:${placeholder(title)};display:flex;align-items:center;justify-content:center;font-size:40px;font-weight:900;color:rgba(255,255,255,.2)">${escapeHtml(title.charAt(0))}</div>
+    <div class="card-badge">HD</div>
+    <div class="card-meta">
+      <h3>${escapeHtml(title)}</h3>
+      ${sub ? `<small style="font-size:11px;color:var(--muted)">${escapeHtml(sub)}</small>` : ""}
+    </div>`;
+  el.addEventListener("click", () => openDetail(id, title));
+  return el;
+}
+
+// --- HOME FETCH ---
+async function loadHome() {
+  const grid = document.getElementById("home-grid");
+  grid.innerHTML = Array(10).fill('<div class="skel"></div>').join("");
+  try {
+    const data = await apiFetch("/api/search?q=Drama");
+    grid.innerHTML = "";
+    if (!data.series || !data.series.length) {
+      grid.innerHTML = `<div class="empty"><b>Data Kosong</b>Tidak ada hasil dari server.</div>`;
+      return;
+    }
+    data.series.slice(0, 15).forEach((s, i) => grid.appendChild(createCard(s.id, s.name, "", i)));
+  } catch (e) {
+    grid.innerHTML = `<div class="empty"><b>Koneksi Gagal</b>${escapeHtml(e.message)}</div>`;
+  }
+}
+
+// --- SEARCH (RACE CONDITION SAFE) ---
+let searchTimer;
+let searchController = null;
+const searchInput = document.getElementById("search");
+
+searchInput.addEventListener("input", (e) => {
+  clearTimeout(searchTimer);
+  const q = e.target.value.trim();
+  
+  if (searchController) searchController.abort();
+  
+  if (!q) { switchView('home'); return; }
+  switchView('search');
+  
+  const grid = document.getElementById("results-grid");
+  document.getElementById("results-title").textContent = `Hasil: "${q}"`;
+  document.getElementById("results-count").textContent = "";
+  grid.innerHTML = Array(6).fill('<div class="skel"></div>').join("");
+
+  searchTimer = setTimeout(async () => {
+    searchController = new AbortController();
+    try {
+      const data = await apiFetch(`/api/search?q=${encodeURIComponent(q)}`, { signal: searchController.signal });
+      document.getElementById("results-count").textContent = `${data.series?.length || 0} judul`;
+      grid.innerHTML = "";
+      
+      if (!data.series?.length) {
+        grid.innerHTML = `<div class="empty"><b>Nggak Ketemu</b>Coba kata kunci lain.</div>`;
+        return;
+      }
+      data.series.forEach((s, i) => grid.appendChild(createCard(s.id, s.name, s.weight ? `Skor: ${s.weight}` : "", i)));
+    } catch (err) {
+      if (err.name !== "AbortError") {
+        grid.innerHTML = `<div class="empty"><b>Pencarian Gagal</b>${escapeHtml(err.message)}</div>`;
+      }
+    }
+  }, 500);
+});
+
+// --- DETAIL MODAL ---
+let currentSeries = null;
+let detailController = null;
+
+async function openDetail(id, fallbackTitle) {
+  const overlay = document.getElementById("detail");
+  document.getElementById("d-title").textContent = fallbackTitle;
+  document.getElementById("d-sub").textContent = "Memuat data...";
+  document.getElementById("d-desc").textContent = "";
+  document.getElementById("d-eps").innerHTML = Array(6).fill('<div class="skel" style="aspect-ratio:auto;height:48px"></div>').join("");
+  document.getElementById("d-banner").style.background = placeholder(fallbackTitle);
+  document.getElementById("d-banner").removeAttribute("src");
+  overlay.classList.add("open");
+
+  if (detailController) detailController.abort();
+  detailController = new AbortController();
+
+  try {
+    const data = await apiFetch(`/api/series/${id}`, { signal: detailController.signal });
+    const eps = data.episodes || [];
+    currentSeries = { id, title: fallbackTitle, episodes: eps };
+
+    const first = eps[0] || {};
+    document.getElementById("d-title").textContent = first.synopsis ? first.synopsis.split(" - Episode")[0] : fallbackTitle;
+    document.getElementById("d-sub").textContent = [first.series_category_name, `${eps.length} Episode`].filter(Boolean).join(" • ");
+    document.getElementById("d-desc").textContent = first.description || first.synopsis || "Sinopsis belum tersedia.";
+    
+    if (first.cover_landscape_image_url) {
+      const img = document.getElementById("d-banner");
+      img.src = first.cover_landscape_image_url;
+      img.style.background = "none";
+    }
+
+    const box = document.getElementById("d-eps");
+    box.innerHTML = "";
+    if (!eps.length) {
+      box.innerHTML = `<div class="empty" style="padding:20px">Belum ada episode.</div>`;
+      return;
+    }
+    
+    eps.forEach(ep => {
+      const b = document.createElement("button");
+      b.className = "ep";
+      const dur = ep.time_duration ? `${Math.round(parseInt(ep.time_duration) / 60)} mnt` : "";
+      b.innerHTML = `<b>EP ${ep.number}</b><small>${dur}</small>`;
+      b.onclick = () => playEpisode(ep, { id, title: document.getElementById("d-title").textContent });
+      box.appendChild(b);
+    });
+  } catch (err) {
+    if (err.name !== "AbortError") {
+      document.getElementById("d-sub").textContent = "Gagal memuat episode.";
+      document.getElementById("d-eps").innerHTML = "";
+    }
+  }
+}
+function closeDetail() { document.getElementById("detail").classList.remove("open"); }
+
+// --- PLAYER ENGINE ---
+const player = document.getElementById("player");
+const video = document.getElementById("video");
+const spinner = document.getElementById("spinner");
+let hls = null;
+let activeEp = null, activeSeries = null;
+let playController = null;
+let lastSavedTime = 0;
+
+function extractStreamUrl(obj) {
+  if (!obj) return null;
+  if (typeof obj === "string") return /^https?:\/\//.test(obj) && /\.(m3u8|mp4)/i.test(obj) ? obj : null;
+  if (Array.isArray(obj)) { for (const v of obj) { const u = extractStreamUrl(v); if (u) return u; } return null; }
+  if (typeof obj === "object") {
+    const keys = ["play_url", "hls_url", "stream_url", "url", "link", "video_url", "m3u8", "mp4_url", "src"];
+    for (const k of keys) { if (typeof obj[k] === "string" && /^https?:\/\//.test(obj[k])) return obj[k]; }
+    for (const k in obj) { const u = extractStreamUrl(obj[k]); if (u) return u; }
+  }
+  return null;
+}
+
+async function playEpisode(ep, series) {
+  activeEp = ep; activeSeries = series;
+  player.classList.add("open");
+  spinner.classList.add("on");
+  document.getElementById("p-title").textContent = `${series.title} · EP ${ep.number}`;
+  document.getElementById("d-title").textContent = series.title;
+
+  const eps = currentSeries?.episodes || [];
+  const idx = eps.findIndex(e => String(e.product_id) === String(ep.product_id));
+  document.getElementById("p-prev").disabled = idx <= 0;
+  document.getElementById("p-next").disabled = idx < 0 || idx >= eps.length - 1;
+
+  if (playController) playController.abort();
+  playController = new AbortController();
+
+  try {
+    const data = await apiFetch(`/api/play/${ep.product_id}?series_id=${series.id}`, { signal: playController.signal });
+    const url = extractStreamUrl(data);
+    if (!url) throw new Error("URL stream tidak ditemukan di response.");
+    
+    attachStream(url, series.id, ep);
+    saveHistory(series.id, ep, series.title, 0);
+  } catch (err) {
+    if (err.name !== "AbortError") {
+      spinner.classList.remove("on");
+      toast(`Gagal: ${err.message}`);
+    }
+  }
+}
+
+function attachStream(url, seriesId, ep) {
+  if (hls) { hls.destroy(); hls = null; }
+  video.pause();
+  video.removeAttribute("src");
+  video.load();
+
+  const resumePos = getSavedProgress(seriesId, ep.product_id);
+  if (resumePos > 5) video.addEventListener("loadedmetadata", () => { video.currentTime = resumePos; }, { once: true });
+
+  if (url.includes(".m3u8")) {
+    if (window.Hls && Hls.isSupported()) {
+      hls = new Hls({ enableWorker: true, lowLatencyMode: true });
+      hls.loadSource(url);
+      hls.attachMedia(video);
+      hls.on(Hls.Events.MANIFEST_PARSED, () => { spinner.classList.remove("on"); video.play().catch(() => {}); });
+      hls.on(Hls.Events.ERROR, (event, data) => {
+        if (data.fatal) {
+          spinner.classList.remove("on");
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) { hls.startLoad(); toast("Jaringan bermasalah, mencoba memuat ulang..."); }
+          else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) { hls.recoverMediaError(); toast("Media error, mencoba memulihkan..."); }
+          else { toast("Stream error fatal."); }
+        }
+      });
+    } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+      video.src = url;
+      video.addEventListener("loadedmetadata", () => { spinner.classList.remove("on"); video.play().catch(() => {}); }, { once: true });
+    }
+  } else {
+    video.src = url;
+    video.addEventListener("loadedmetadata", () => { spinner.classList.remove("on"); video.play().catch(() => {}); }, { once: true });
+  }
+
+  video.addEventListener("error", () => { spinner.classList.remove("on"); toast("Video gagal dimuat."); }, { once: true });
+}
+
+video.addEventListener("timeupdate", () => {
+  if (!activeEp || !activeSeries) return;
+  const now = Date.now();
+  if (now - lastSavedTime > 5000) {
+    lastSavedTime = now;
+    saveHistory(activeSeries.id, activeEp, activeSeries.title, video.currentTime);
+  }
+});
+
+function nextEp() {
+  const eps = currentSeries?.episodes || [];
+  const i = eps.findIndex(e => String(e.product_id) === String(activeEp?.product_id));
+  if (i >= 0 && i < eps.length - 1) playEpisode(eps[i + 1], activeSeries);
+}
+function prevEp() {
+  const eps = currentSeries?.episodes || [];
+  const i = eps.findIndex(e => String(e.product_id) === String(activeEp?.product_id));
+  if (i > 0) playEpisode(eps[i - 1], activeSeries);
+}
+function closePlayer() {
+  player.classList.remove("open");
+  if (hls) { hls.destroy(); hls = null; }
+  video.pause();
+  video.removeAttribute("src");
+  video.load();
+  if (playController) playController.abort();
+}
+
+// --- HISTORY & RESUME ---
+function saveHistory(seriesId, ep, title, progress) {
+  let h = [];
+  try { h = JSON.parse(localStorage.getItem("xs0.history") || "[]"); } catch { h = []; }
+  if (!Array.isArray(h)) h = [];
+  h = h.filter(x => x && x.seriesId && x.ep);
+  
+  const idx = h.findIndex(x => String(x.seriesId) === String(seriesId));
+  if (idx >= 0) h.splice(idx, 1);
+  
+  h.unshift({ seriesId, ep: ep.number, productId: ep.product_id, title, progress, ts: Date.now() });
+  localStorage.setItem("xs0.history", JSON.stringify(h.slice(0, 20)));
+  renderHistory();
+}
+function getSavedProgress(seriesId, productId) {
+  try {
+    const h = JSON.parse(localStorage.getItem("xs0.history") || "[]");
+    const item = h.find(x => String(x.seriesId) === String(seriesId) && String(x.productId) === String(productId));
+    return item ? item.progress : 0;
+  } catch { return 0; }
+}
+function renderHistory() {
+  let h = [];
+  try { h = JSON.parse(localStorage.getItem("xs0.history") || "[]"); } catch { h = []; }
+  if (!Array.isArray(h)) h = [];
+  
+  const row = document.getElementById("row-history");
+  const grid = document.getElementById("history-grid");
+  if (!h.length) { row.style.display = "none"; return; }
+  
+  row.style.display = "block";
+  grid.innerHTML = "";
+  h.forEach((item, i) => grid.appendChild(createCard(item.seriesId, item.title || `Series ${item.seriesId}`, `Lanjut EP ${item.ep}`, i)));
+}
+
+// --- INIT ---
+window.addEventListener("scroll", () => document.getElementById("hdr").classList.toggle("solid", scrollY > 20), { passive: true });
+
+async function init() {
+  renderHistory();
+  await loadHome();
+}
+init();
+</script>
+</body>
+</html>
