@@ -1,7 +1,8 @@
-# api/index.py — Viu Auto API (Spoof IP + Triple Proxy)
-import os, json, hashlib, logging, re, random, asyncio
+# api/index.py — Viu Auto API (Attack & Defend Edition)
+import os, json, hashlib, logging, re, random, asyncio, time
 from typing import Optional, Dict, Any
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, Security
+from fastapi.security.api_key import APIKeyHeader
 from curl_cffi.requests import AsyncSession, Session
 import httpx
 from urllib.parse import quote
@@ -19,6 +20,16 @@ COMMON = {
 }
 UA = ("Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/157.0.0.0 Mobile Safari/537.36")
+
+# --- LAPIS 1: API KEY SECURITY ---
+API_KEY_NAME = "X-API-Key"
+api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+
+def verify_api_key(api_key: str = Security(api_key_header)):
+    expected_key = os.environ.get("MY_API_KEY", "rahasia-negara")
+    if api_key != expected_key:
+        raise HTTPException(status_code=403, detail="Akses ditolak. API Key salah.")
+    return api_key
 
 # --- CLOUDFLARE KV SETUP ---
 CF_ACCOUNT = os.environ.get("CF_ACCOUNT_ID", "")
@@ -42,7 +53,7 @@ def kv_set(key: str, value: str, ex: int = 3600) -> None:
                   content=value, params={"expiration_ttl": str(ex)})
     except: pass
 
-# --- MULTI-SOURCE PROXY FETCHER ---
+# --- PROXY ROTATOR ---
 async def get_id_proxies():
     proxies = []
     try:
@@ -54,16 +65,7 @@ async def get_id_proxies():
         for item in r2.json().get("data", []):
             proxies.append(f"{item['ip']}:{item['port']}")
     except: pass
-    try:
-        r3 = httpx.get("http://pubproxy.com/api/proxy?country=ID&format=txt&limit=10", timeout=5)
-        proxies.extend(r3.text.splitlines())
-    except: pass
-    
-    cleaned = []
-    for p in proxies:
-        p = p.strip()
-        if p and ":" in p:
-            cleaned.append(p)
+    cleaned = [p.strip() for p in proxies if ":" in p]
     random.shuffle(cleaned)
     return list(set(cleaned))[:20]
 
@@ -105,38 +107,52 @@ def _bearer() -> str:
     if b: kv_set("viu:bearer", b, ex=43200)
     return b
 
-def _call(route: str, params: Optional[Dict] = None) -> Any:
+# --- LAPIS 2: EXPONENTIAL BACKOFF (ANTI-BAN) ---
+def _call(route: str, params: Optional[Dict] = None, retries: int = 2) -> Any:
     q = {**COMMON, "r": route}
     if params: q.update(params)
     headers = {"accept": "application/json, text/plain, */*", "authorization": f"Bearer {_bearer()}", "user-agent": UA, "origin": "https://www.viu.com", "referer": "https://www.viu.com/"}
-    try:
-        with Session(impersonate="chrome") as s:
-            r = s.get(BASE, params=q, headers=headers, timeout=15)
-            if r.status_code in (401, 403):
-                kv_set("viu:bearer", "", ex=1)
-                headers["authorization"] = f"Bearer {auto_harvest_token()}"
+    
+    for attempt in range(retries + 1):
+        try:
+            with Session(impersonate="chrome") as s:
                 r = s.get(BASE, params=q, headers=headers, timeout=15)
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=str(e))
+                if r.status_code in (401, 403):
+                    kv_set("viu:bearer", "", ex=1)
+                    headers["authorization"] = f"Bearer {auto_harvest_token()}"
+                    r = s.get(BASE, params=q, headers=headers, timeout=15)
+                
+                if r.status_code == 429:
+                    log.warning(f"Kena Rate Limit (429)! Nunggu {2 ** attempt} detik...")
+                    time.sleep(2 ** attempt)
+                    continue
+                
+                if r.status_code != 200:
+                    raise HTTPException(status_code=r.status_code, detail=f"Viu HTTP {r.status_code}")
 
-    if r.status_code != 200:
-        raise HTTPException(status_code=r.status_code, detail=f"Viu HTTP {r.status_code}")
-    try:
-        data = r.json()
-    except:
-        raise HTTPException(status_code=500, detail="Bukan JSON")
-    if not isinstance(data, dict):
-        raise HTTPException(status_code=500, detail="Format aneh")
-    if data.get("status", {}).get("code") != 0:
-        raise HTTPException(502, data.get("status", {}).get("message", "Error"))
-    return data.get("data", {})
+        except Exception as e:
+            if attempt == retries: raise HTTPException(status_code=502, detail=str(e))
+            time.sleep(2 ** attempt)
+            continue
 
-app = FastAPI(title="Viu API")
+        try:
+            data = r.json()
+        except:
+            raise HTTPException(status_code=500, detail="Bukan JSON")
+        if not isinstance(data, dict):
+            raise HTTPException(status_code=500, detail="Format aneh")
+        if data.get("status", {}).get("code") != 0:
+            raise HTTPException(502, data.get("status", {}).get("message", "Error"))
+        
+        return data.get("data", {})
 
+app = FastAPI(title="Viu API", description="Protected API")
+
+# Semua route di bawah ini wajib pake X-API-Key di header
 @app.get("/")
-def root(): return {"status": "ok"}
+def root(): return {"status": "ok", "message": "API aktif. Gunakan header X-API-Key."}
 
-@app.get("/api/health")
+@app.get("/api/health", dependencies=[Depends(verify_api_key)])
 def health():
     try:
         _bearer()
@@ -144,7 +160,7 @@ def health():
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
-@app.get("/api/search")
+@app.get("/api/search", dependencies=[Depends(verify_api_key)])
 def search(q: str):
     ckey = f"viu:search:{hashlib.md5(q.encode()).hexdigest()}"
     cached = kv_get(ckey)
@@ -154,32 +170,24 @@ def search(q: str):
     headers = {
         "sec-ch-ua-platform": '"Android"',
         "authorization": f"Bearer {token}",
-        "sec-ch-ua": '"Not-A.Brand";v="99", "Google Chrome";v="157", "Chromium";v="157"',
-        "sec-ch-ua-mobile": "?1",
         "user-agent": UA,
         "accept": "application/json, text/plain, */*",
         "origin": "https://www.viu.com",
         "referer": "https://www.viu.com/",
-        "accept-language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
     }
     
     keyword_encoded = quote(q)
     url = f"{BASE}?platform_flag_label=web&area_id=1000&language_flag_id=8&ut=0&platformFlagLabel=web&areaId=1000&languageFlagId=8&countryCode=ID&r=%2Fsearch%2Fprediction&keyword={keyword_encoded}"
 
-    # TRIK 1: SPOOF IP HEADER (Tanpa Proxy)
+    # Spoofing IP (Trik yang berhasil)
     fake_ip = f"114.122.{random.randint(1,255)}.{random.randint(1,255)}"
-    headers_spoof = {
-        **headers,
-        "x-forwarded-for": fake_ip,
-        "x-real-ip": fake_ip,
-        "x-viu-ip": fake_ip
-    }
+    headers_spoof = {**headers, "x-forwarded-for": fake_ip, "x-real-ip": fake_ip}
+    
     try:
         with Session(impersonate="chrome") as s:
             r = s.get(url, headers=headers_spoof, timeout=10)
             data = r.json()
-            area_code = data.get("server", {}).get("area", {}).get("country", {}).get("code")
-            if area_code == "ID" and (data.get("data", {}).get("series") or data.get("data", {}).get("actor")):
+            if data.get("server", {}).get("area", {}).get("country", {}).get("code") == "ID":
                 result = {
                     "query": q, "method": "spoofed",
                     "series": data.get("data", {}).get("series", []),
@@ -189,55 +197,28 @@ def search(q: str):
                 return result
     except Exception: pass
 
-    # TRIK 2: PAKAI PROXY ID
-    proxies = asyncio.run(get_id_proxies())
-    for proxy in proxies:
-        try:
-            px = {"http": f"http://{proxy}", "https": f"http://{proxy}"}
-            with Session(impersonate="chrome", proxies=px) as s:
-                r = s.get(url, headers=headers, timeout=8)
-            data = r.json()
-            area_code = data.get("server", {}).get("area", {}).get("country", {}).get("code")
-            if area_code == "ID":
-                result_data = data.get("data", {})
-                if result_data.get("series") or result_data.get("actor"):
-                    result = {
-                        "query": q, "method": "proxy",
-                        "series": result_data.get("series", []),
-                        "actor": result_data.get("actor", [])
-                    }
-                    kv_set(ckey, json.dumps(result, ensure_ascii=False), ex=3600)
-                    return result
-        except Exception:
-            continue
+    return {"query": q, "series": [], "actor": [], "note": "Spoof gagal, silakan coba lagi."}
 
-    return {"query": q, "series": [], "actor": [], "note": "Semua trik gagal (Spoof & Proxy)."}
-
-@app.get("/api/home")
+@app.get("/api/home", dependencies=[Depends(verify_api_key)])
 def home():
     ckey = "viu:home"
     cached = kv_get(ckey)
     if cached: return json.loads(cached)
-    try:
-        data = _call("/vod/home")
-        if data and isinstance(data, dict):
-            kv_set(ckey, json.dumps(data, ensure_ascii=False), ex=1800)
-            return data
-    except Exception: pass
+    
     try:
         with Session(impersonate="chrome") as s:
             r = s.get(VIU_HOME, headers={"user-agent": UA}, timeout=15)
-            if r.status_code == 200 and "not available in your country" not in r.text:
+            if r.status_code == 200:
                 series_ids = list(set(re.findall(r'"series_id":\s*"(\d+)"', r.text)))
                 fallback_list = [{"series_id": sid} for sid in series_ids[:20]]
                 result = {"status": "success", "method": "html_scrape", "data": fallback_list}
                 if fallback_list:
                     kv_set(ckey, json.dumps(result, ensure_ascii=False), ex=1800)
                     return result
-    except Exception as e: pass
+    except Exception: pass
     return {"status": "error", "message": "Gagal ambil data home."}
 
-@app.get("/api/series/{series_id}")
+@app.get("/api/series/{series_id}", dependencies=[Depends(verify_api_key)])
 def series(series_id: str, refresh: bool = False):
     ckey = f"viu:series:{series_id}"
     if not refresh:
@@ -249,7 +230,7 @@ def series(series_id: str, refresh: bool = False):
     kv_set(ckey, json.dumps(result, ensure_ascii=False), ex=21600)
     return result
 
-@app.get("/api/play/{product_id}")
+@app.get("/api/play/{product_id}", dependencies=[Depends(verify_api_key)])
 def play(product_id: str, series_id: str = None):
     params = {"product_id": product_id}
     if series_id: params["series_id"] = series_id
