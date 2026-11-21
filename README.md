@@ -1,1 +1,0 @@
-# Ddos.lynx.io
