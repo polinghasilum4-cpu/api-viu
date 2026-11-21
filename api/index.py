@@ -1,4 +1,4 @@
-# api/index.py — Viu Auto API (Fixed Sync Version)
+# api/index.py — Viu Auto API (Spoof Fixed + Fallback)
 import os, json, hashlib, logging, re, random, asyncio, time, secrets, threading
 from typing import Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, Depends, Header, Request
@@ -20,11 +20,13 @@ COMMON = {
 UA = ("Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/157.0.0.0 Mobile Safari/537.36")
 
+# --- TOKEN DARURAT (Biar web nggak pernah blank) ---
+FALLBACK_TOKEN = "eyJhbGciOiJBMTI4S1ciLCJlbmMiOiJBMTI4Q0JDLUhTMjU2In0.Hv2g6GGzyq-g35coFi7tGkUpXhtMZD5c2pnozynjhD6w7kUqIlFQoA.1ZF-h1ORbdpl6__sxza2Iw.N3YrDC25A1n25LaOAiLj3AycPUxM9ryiCHfInFRw8objq39NOCxfsC67gw0_q4rEPM8YYuVakwe1n55S8xuPcqQSx5f0z-7h1ZrFS_ABQKUDxnwHmw4L3qF1Nsmi_66CAzAwulCzs3o0ro2uR1Dc2fMM5yrfUDbe_davrV9ekRVwYkEZ0So2KqQb8ehd8mpmPPDaccpnw9x9U5PS_MImNma8710Ib6QW68vrLXRDjnQ.QCaYCMW4Cnk8hSSM0eUZMQ"
+
 API_KEY_NAME = "X-API-Key"
-RATE_LIMIT_WINDOW = 60
 RATE_LIMITS = {"default": 60, "/api/search": 20, "/api/series/": 30, "/api/play/": 15}
-_rate_lock = threading.Lock()
 _rate_local: Dict[str, tuple] = {}
+_rate_lock = threading.Lock()
 
 def _rate_limit(request: Request) -> None:
     forwarded_for = request.headers.get("x-forwarded-for", "")
@@ -34,18 +36,14 @@ def _rate_limit(request: Request) -> None:
     path = request.url.path
     route_group, limit = next(((p, n) for p, n in RATE_LIMITS.items() if p != "default" and path.startswith(p)), ("default", RATE_LIMITS["default"]))
     now = int(time.time())
-    window = now // RATE_LIMIT_WINDOW
-    identity = hashlib.sha256(client_ip.encode()).hexdigest()[:24]
-    bucket = f"xs0:rate:{identity}:{route_group}:{window}"
+    window = now // 60
+    bucket = f"xs0:rate:{hashlib.sha256(client_ip.encode()).hexdigest()[:24]}:{route_group}:{window}"
 
     with _rate_lock:
-        count, expires = _rate_local.get(bucket, (0, now + RATE_LIMIT_WINDOW))
+        count, expires = _rate_local.get(bucket, (0, now + 60))
         if expires <= now: count = 0
         count += 1
-        _rate_local[bucket] = (count, now + RATE_LIMIT_WINDOW)
-        if len(_rate_local) > 5000:
-            for old_b, (_, old_e) in list(_rate_local.items()):
-                if old_e <= now: _rate_local.pop(old_b, None)
+        _rate_local[bucket] = (count, now + 60)
 
     if count > limit:
         raise HTTPException(status_code=429, detail="Terlalu banyak permintaan.")
@@ -80,31 +78,21 @@ def kv_set(key: str, value: str, ex: int = 3600) -> None:
                   content=value, params={"expiration_ttl": str(ex)})
     except: pass
 
-# --- PROXY ROTATOR ---
+# --- TOKEN HARVESTER ---
 async def get_id_proxies():
     proxies = []
     try:
         r1 = httpx.get("https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&protocol=http&proxy_format=ipport&format=text&country=ID", timeout=5)
         proxies.extend(r1.text.splitlines())
     except: pass
-    try:
-        r2 = httpx.get("https://proxylist.geonode.com/api/proxy-list?limit=50&page=1&sort_by=lastChecked&sort_type=desc&country=ID", timeout=5)
-        for item in r2.json().get("data", []):
-            proxies.append(f"{item['ip']}:{item['port']}")
-    except: pass
     cleaned = [p.strip() for p in proxies if ":" in p]
     random.shuffle(cleaned)
-    return list(set(cleaned))[:20]
+    return list(set(cleaned))[:15]
 
-# --- TOKEN HARVESTER ---
 async def test_proxy(proxy: str, headers: dict) -> Optional[str]:
     try:
         px = {"http": f"http://{proxy}", "https": f"http://{proxy}"}
         async with AsyncSession(impersonate="chrome", proxies=px, timeout=6) as s:
-            r1 = await s.get(VIU_HOME, headers=headers)
-            if "not available in your country" not in r1.text:
-                m = re.search(r'(eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+)', r1.text)
-                if m: return m.group(1)
             guest_url = f"{BASE}?r=/vod/login/guest&platform_flag_label=web&area_id=1000&language_flag_id=8&ut=0&countryCode=ID"
             r2 = await s.get(guest_url, headers=headers)
             if r2.status_code == 200:
@@ -116,7 +104,7 @@ async def test_proxy(proxy: str, headers: dict) -> Optional[str]:
 async def auto_harvest_token_async() -> str:
     proxies_list = await get_id_proxies()
     if not proxies_list: return ""
-    headers = {"user-agent": UA, "accept-language": "id-ID,id;q=0.9"}
+    headers = {"user-agent": UA, "accept": "application/json"}
     tasks = [test_proxy(proxy.strip(), headers) for proxy in proxies_list]
     for coro in asyncio.as_completed(tasks):
         tok = await coro
@@ -124,8 +112,11 @@ async def auto_harvest_token_async() -> str:
     return ""
 
 def auto_harvest_token() -> str:
-    try: return asyncio.run(auto_harvest_token_async())
-    except: return ""
+    try: 
+        t = asyncio.run(auto_harvest_token_async())
+        if t: return t
+    except: pass
+    return FALLBACK_TOKEN # Kalo proxy mati semua, pake token darurat
 
 def _bearer() -> str:
     b = kv_get("viu:bearer")
@@ -134,16 +125,26 @@ def _bearer() -> str:
     if b: kv_set("viu:bearer", b, ex=43200)
     return b
 
+# --- CORE FETCH (PAKE SPOOF IP) ---
 def _call(route: str, params: Optional[Dict] = None, retries: int = 2) -> Any:
     q = {**COMMON, "r": route}
     if params: q.update(params)
     
     for attempt in range(retries + 1):
         token = _bearer()
-        if not token:
-            raise HTTPException(status_code=502, detail="Gagal ambil token Viu.")
-            
-        headers = {"accept": "application/json, text/plain, */*", "authorization": f"Bearer {token}", "user-agent": UA, "origin": "https://www.viu.com", "referer": "https://www.viu.com/"}
+        if not token: raise HTTPException(status_code=502, detail="Gagal ambil token Viu.")
+        
+        # SPOOF IP DISINI BIAR VIU NGIRAIN KITA DARI INDONESIA
+        fake_ip = f"114.122.{random.randint(1,255)}.{random.randint(1,255)}"
+        headers = {
+            "accept": "application/json, text/plain, */*", 
+            "authorization": f"Bearer {token}", 
+            "user-agent": UA, 
+            "origin": "https://www.viu.com", 
+            "referer": "https://www.viu.com/",
+            "x-forwarded-for": fake_ip,
+            "x-real-ip": fake_ip
+        }
         
         try:
             with Session(impersonate="chrome") as s:
@@ -174,20 +175,19 @@ def _call(route: str, params: Optional[Dict] = None, retries: int = 2) -> Any:
         
         return data.get("data", {})
 
-app = FastAPI(title="Viu API", description="Protected API")
+app = FastAPI(title="Viu API")
 
 @app.get("/")
-def root(): return {"status": "ok", "message": "API aktif."}
+def root(): return {"status": "ok"}
 
 @app.get("/api/health", dependencies=[Depends(verify_api_key)])
 def health():
     try:
-        _bearer()
-        return {"ok": True, "status": "Token siap"}
+        tok = _bearer()
+        return {"ok": bool(tok), "status": "Token siap" if tok else "Token kosong"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
-# --- TAMBAHAN: ENDPOINT BROWSE BUAT THUMBNAIL ---
 @app.get("/api/browse", dependencies=[Depends(verify_api_key)])
 def browse(size: int = 20, page: int = 1):
     ckey = f"viu:browse:{size}:{page}"
@@ -205,10 +205,7 @@ def search(q: str):
     if cached: return json.loads(cached)
 
     token = _bearer()
-    if not token: raise HTTPException(502, "Gagal ambil token.")
-    
     headers = {
-        "sec-ch-ua-platform": '"Android"',
         "authorization": f"Bearer {token}",
         "user-agent": UA,
         "accept": "application/json, text/plain, */*",
@@ -249,20 +246,26 @@ def series(series_id: str, refresh: bool = False):
     kv_set(ckey, json.dumps(result, ensure_ascii=False), ex=21600)
     return result
 
-# --- FIX: ENDPOINT PLAY PAKE /playback/distribute ---
 @app.get("/api/play/{ccs_product_id}", dependencies=[Depends(verify_api_key)])
 def play(ccs_product_id: str, series_id: str = None):
     if not ccs_product_id.isdigit(): raise HTTPException(400, "Invalid ID")
-    
     ckey = f"viu:play:{ccs_product_id}"
     cached = kv_get(ckey)
     if cached: return json.loads(cached)
     
     token = _bearer()
-    if not token: raise HTTPException(502, "Gagal ambil token.")
-    
     url = f"https://api-gateway-global.viu.com/api/playback/distribute?platform_flag_label=web&area_id=1000&language_flag_id=8&ut=0&platformFlagLabel=web&areaId=1000&languageFlagId=8&countryCode=ID&ccs_product_id={ccs_product_id}"
-    headers = {"accept": "application/json, text/plain, */*", "authorization": f"Bearer {token}", "user-agent": UA, "origin": "https://www.viu.com", "referer": "https://www.viu.com/"}
+    
+    fake_ip = f"114.122.{random.randint(1,255)}.{random.randint(1,255)}"
+    headers = {
+        "accept": "application/json, text/plain, */*", 
+        "authorization": f"Bearer {token}", 
+        "user-agent": UA, 
+        "origin": "https://www.viu.com", 
+        "referer": "https://www.viu.com/",
+        "x-forwarded-for": fake_ip,
+        "x-real-ip": fake_ip
+    }
     
     try:
         with Session(impersonate="chrome") as s:
@@ -270,7 +273,6 @@ def play(ccs_product_id: str, series_id: str = None):
         if r.status_code != 200: raise HTTPException(502, f"Viu HTTP {r.status_code}")
         data = r.json()
         if data.get("status", {}).get("code") != 0: raise HTTPException(502, data.get("status", {}).get("message", "Error"))
-        
         result = data.get("data", {})
         kv_set(ckey, json.dumps(result, ensure_ascii=False), ex=1800)
         return result
