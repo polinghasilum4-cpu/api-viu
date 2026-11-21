@@ -3,22 +3,21 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0b0b0f">
+<meta name="theme-color" content="#0a0a0d">
 <title>xs0Movie</title>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
 <style>
   :root{
     --bg:#0a0a0d;
-    --bg2:#111116;
+    --bg2:#15151b;
     --fg:#f5f5f7;
     --muted:#8a8a95;
     --line:rgba(255,255,255,.08);
     --line2:rgba(255,255,255,.14);
     --amber:#ffb300;
     --pink:#ff2d78;
-    --cyan:#38e1ff;
-    --purple:#8b5cf6;
-    --r:14px;
+    --accent:#8b5cf6;
+    --r:12px;
     --ease:cubic-bezier(.2,.7,.2,1);
   }
   *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
@@ -28,10 +27,10 @@
   img{display:block;max-width:100%}
   button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
   input{font:inherit;color:inherit;background:none;border:none;outline:none}
-  a{color:inherit;text-decoration:none}
 
+  /* ── NOISE GRAIN ── */
   body::before{
-    content:"";position:fixed;inset:0;pointer-events:none;z-index:1;opacity:.035;
+    content:"";position:fixed;inset:0;pointer-events:none;z-index:1;opacity:.03;
     background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
     mix-blend-mode:overlay;
   }
@@ -41,129 +40,114 @@
     position:fixed;top:0;left:0;right:0;z-index:60;
     display:flex;align-items:center;gap:14px;
     padding:14px max(18px,env(safe-area-inset-left)) 14px max(18px,env(safe-area-inset-right));
-    background:linear-gradient(180deg,rgba(10,10,13,.92),rgba(10,10,13,0));
-    backdrop-filter:blur(14px) saturate(140%);
-    -webkit-backdrop-filter:blur(14px) saturate(140%);
-    transition:background .3s var(--ease),padding .3s var(--ease);
+    background:rgba(10,10,13,.7);
+    backdrop-filter:blur(16px) saturate(140%);-webkit-backdrop-filter:blur(16px) saturate(140%);
+    transition:background .3s var(--ease);
   }
-  header.solid{background:rgba(10,10,13,.85);border-bottom:1px solid var(--line)}
+  header.solid{background:rgba(10,10,13,.95);border-bottom:1px solid var(--line)}
   .logo{font-weight:900;font-size:22px;letter-spacing:-.045em;display:flex;align-items:center;gap:2px;white-space:nowrap}
   .logo b{background:linear-gradient(92deg,var(--amber),var(--pink));-webkit-background-clip:text;background-clip:text;color:transparent}
   .logo span{color:var(--fg);opacity:.9}
   .search-wrap{flex:1;max-width:460px;position:relative;margin-left:auto}
   .search-wrap input{
     width:100%;padding:11px 16px 11px 42px;border-radius:999px;
-    background:rgba(255,255,255,.05);border:1px solid var(--line);
+    background:rgba(255,255,255,.06);border:1px solid var(--line);
     font-size:14px;transition:all .25s var(--ease);
   }
-  .search-wrap input:focus{background:rgba(255,255,255,.08);border-color:var(--line2);box-shadow:0 0 0 3px rgba(255,179,0,.1)}
+  .search-wrap input:focus{background:rgba(255,255,255,.1);border-color:var(--line2);box-shadow:0 0 0 3px rgba(255,179,0,.15)}
   .search-wrap svg{position:absolute;left:15px;top:50%;transform:translateY(-50%);opacity:.5}
   .clock{font-variant-numeric:tabular-nums;font-size:13px;color:var(--muted);white-space:nowrap;display:none}
   @media(min-width:720px){.clock{display:block}}
 
-  /* ── HERO (DIKECILIN BIAR HASIL PENCARIAN KELIHATAN) ── */
+  /* ── HERO (COMPACT) ── */
   .hero{
-    position:relative;min-height:60dvh;display:flex;align-items:center;
-    padding:100px max(20px,5vw) 40px;
+    position:relative;min-height:35dvh;display:flex;align-items:center;
+    padding:100px max(20px,5vw) 30px;
     overflow:hidden;isolation:isolate;
   }
-  #orb{position:absolute;right:-10%;top:50%;transform:translateY(-50%);width:80vw;height:80vw;z-index:-1;opacity:.6;pointer-events:none}
-  @media(min-width:820px){#orb{right:-5%;width:min(60vw,600px);height:min(60vw,600px);opacity:.9}}
+  #orb{position:absolute;right:-10%;top:50%;transform:translateY(-50%);width:70vw;height:70vw;z-index:-1;opacity:.7;pointer-events:none}
+  @media(min-width:820px){#orb{right:0;width:min(50vw,500px);height:min(50vw,500px);opacity:1}}
   
-  .hero-inner{max-width:1280px;margin:0 auto;width:100%}
-  .hero-kicker{display:inline-flex;align-items:center;gap:8px;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:20px}
-  .hero-kicker::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--accent,var(--amber));box-shadow:0 0 12px var(--accent,var(--amber));animation:pulse 2s infinite}
-  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
-  .hero h1{font-size:clamp(38px,8vw,72px);font-weight:900;letter-spacing:-.045em;line-height:.95;margin-bottom:16px;max-width:14ch}
-  .hero h1 em{font-style:normal;background:linear-gradient(92deg,var(--accent,var(--amber)),var(--pink));-webkit-background-clip:text;background-clip:text;color:transparent}
-  .hero p{font-size:clamp(15px,2vw,18px);color:var(--muted);max-width:46ch;margin-bottom:32px}
-  .hero-actions{display:flex;gap:12px;flex-wrap:wrap}
-  .btn{display:inline-flex;align-items:center;gap:9px;padding:14px 26px;border-radius:999px;font-weight:600;font-size:15px;transition:all .25s var(--ease)}
-  .btn-primary{background:var(--fg);color:#000}
-  .btn-primary:hover{transform:translateY(-2px);box-shadow:0 10px 30px rgba(255,255,255,.15)}
-  .btn-ghost{border:1px solid var(--line2);color:var(--fg)}
-  .btn-ghost:hover{background:rgba(255,255,255,.06);border-color:var(--line2)}
+  .hero-inner{max-width:1480px;margin:0 auto;width:100%;position:relative;z-index:2}
+  .hero-kicker{display:inline-flex;align-items:center;gap:8px;font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:var(--muted);margin-bottom:14px}
+  .hero-kicker::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 12px var(--accent);animation:pulse 2s infinite}
+  @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.8)}}
+  
+  .hero h1{font-size:clamp(32px,6vw,56px);font-weight:900;letter-spacing:-.04em;line-height:1.05;margin-bottom:12px;max-width:15ch}
+  .hero h1 em{font-style:normal;background:linear-gradient(92deg,var(--accent),var(--pink));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero p{font-size:clamp(14px,1.5vw,16px);color:var(--muted);max-width:46ch}
 
   /* ── MAIN CONTENT ── */
   main{padding:0 max(18px,4vw) 100px;max-width:1480px;margin:0 auto;position:relative;z-index:2}
-  .row{margin-bottom:44px;scroll-margin-top:80px} /* scroll-margin biar nggak ketutup header */
+  .row{margin-bottom:48px;scroll-margin-top:80px}
   .row-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:16px}
-  .row-head h2{font-size:clamp(17px,2.4vw,22px);font-weight:700;letter-spacing:-.02em}
+  .row-head h2{font-size:clamp(18px,2.5vw,22px);font-weight:700;letter-spacing:-.02em;display:flex;align-items:center;gap:10px}
   .row-head span{font-size:12px;color:var(--muted)}
   
-  .rail{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(140px,180px);gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:6px;scrollbar-width:none}
-  .rail::-webkit-scrollbar{display:none}
-  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:14px}
-  @media(min-width:720px){.grid{grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:18px}}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:14px}
+  @media(min-width:720px){.grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:20px}}
 
   /* ── CARDS ── */
-  .card{position:relative;border-radius:var(--r);overflow:hidden;background:var(--bg2);cursor:pointer;scroll-snap-align:start;transition:transform .35s var(--ease),box-shadow .35s var(--ease);aspect-ratio:2/3}
-  .card:hover{transform:translateY(-6px) scale(1.02);box-shadow:0 20px 40px rgba(0,0,0,.6),0 0 0 1px var(--line2)}
-  .card img{width:100%;height:100%;object-fit:cover;transition:transform .6s var(--ease),opacity .4s}
-  .card:hover img{transform:scale(1.06)}
-  .card::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 45%,rgba(0,0,0,.9));pointer-events:none}
-  .card-meta{position:absolute;left:10px;right:10px;bottom:10px;z-index:2}
-  .card-meta h3{font-size:13px;font-weight:600;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-  .card-meta small{font-size:11px;color:var(--muted);display:block;margin-top:3px}
-  .card-badge{position:absolute;top:10px;left:10px;z-index:2;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:4px 8px;border-radius:6px;background:rgba(0,0,0,.65);backdrop-filter:blur(6px);border:1px solid var(--line)}
+  .card{position:relative;border-radius:var(--r);overflow:hidden;background:var(--bg2);cursor:pointer;transition:transform .3s var(--ease),box-shadow .3s var(--ease);aspect-ratio:2/3;border:1px solid var(--line)}
+  .card:hover{transform:translateY(-6px) scale(1.02);box-shadow:0 15px 30px rgba(0,0,0,.7),0 0 0 1px var(--line2)}
+  .card::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 40%,rgba(0,0,0,.95));pointer-events:none}
+  .card-meta{position:absolute;left:12px;right:12px;bottom:12px;z-index:2}
+  .card-meta h3{font-size:13px;font-weight:600;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-shadow:0 2px 4px rgba(0,0,0,.8)}
+  .card-badge{position:absolute;top:10px;left:10px;z-index:2;font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:5px 9px;border-radius:6px;background:rgba(0,0,0,.6);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.1)}
 
-  .empty{text-align:center;padding:60px 20px;color:var(--muted);font-size:14px}
+  .empty{text-align:center;padding:60px 20px;color:var(--muted);font-size:14px;background:rgba(255,255,255,.02);border:1px dashed var(--line);border-radius:var(--r);grid-column:1/-1}
   .empty b{display:block;color:var(--fg);font-size:16px;margin-bottom:6px}
 
-  .skel{background:linear-gradient(90deg,#15151b 25%,#1e1e26 50%,#15151b 75%);background-size:200% 100%;animation:sh 1.4s infinite;border-radius:var(--r);aspect-ratio:2/3}
+  .skel{background:linear-gradient(90deg,#15151b 25%,#1e1e26 50%,#15151b 75%);background-size:200% 100%;animation:sh 1.5s infinite;border-radius:var(--r);aspect-ratio:2/3}
   @keyframes sh{0%{background-position:200% 0}100%{background-position:-200% 0}}
 
-  /* ── OVERLAY & MODAL ── */
-  .overlay{position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.72);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);display:flex;align-items:center;justify-content:center;padding:20px;opacity:0;pointer-events:none;transition:opacity .3s var(--ease)}
+  /* ── MODALS & PLAYER ── */
+  .overlay{position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.8);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;padding:20px;opacity:0;pointer-events:none;transition:opacity .3s var(--ease)}
   .overlay.open{opacity:1;pointer-events:auto}
-  .sheet{width:min(920px,100%);max-height:92dvh;overflow-y:auto;border-radius:20px;background:var(--bg2);border:1px solid var(--line2);transform:translateY(20px) scale(.98);transition:transform .4s var(--ease);scrollbar-width:thin}
+  .sheet{width:min(900px,100%);max-height:90dvh;overflow-y:auto;border-radius:20px;background:#111;border:1px solid var(--line2);transform:translateY(30px);transition:transform .4s var(--ease);scrollbar-width:thin}
   .overlay.open .sheet{transform:none}
-  .sheet-banner{position:relative;height:220px;overflow:hidden}
-  .sheet-banner img{width:100%;height:100%;object-fit:cover;filter:blur(2px) brightness(.55);transform:scale(1.1)}
-  .sheet-banner::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent,var(--bg2))}
-  .sheet-body{padding:0 24px 24px;margin-top:-100px;position:relative;z-index:2}
-  .sheet-title{font-size:clamp(22px,4vw,34px);font-weight:800;letter-spacing:-.03em;margin-bottom:8px}
-  .sheet-sub{color:var(--muted);font-size:13px;margin-bottom:16px}
-  .sheet-desc{font-size:14px;line-height:1.65;color:#c8c8d0;margin-bottom:22px;max-width:65ch}
-  .eps-head{font-size:13px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:12px}
-  .eps{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
-  .ep{padding:12px 14px;border-radius:10px;background:rgba(255,255,255,.04);border:1px solid var(--line);text-align:left;transition:all .2s var(--ease);font-size:13px}
-  .ep:hover{background:rgba(255,179,0,.12);border-color:var(--amber);transform:translateY(-2px)}
-  .ep b{display:block;font-weight:700;font-size:14px;margin-bottom:2px}
-  .ep small{color:var(--muted);font-size:11px}
-  .close-btn{position:absolute;top:14px;right:14px;z-index:5;width:36px;height:36px;border-radius:50%;background:rgba(0,0,0,.6);backdrop-filter:blur(10px);display:grid;place-items:center;border:1px solid var(--line2);transition:all .2s}
-  .close-btn:hover{background:rgba(255,255,255,.15);transform:rotate(90deg)}
+  .sheet-banner{position:relative;height:240px;overflow:hidden;background:#000}
+  .sheet-banner img{width:100%;height:100%;object-fit:cover;filter:blur(4px) brightness(.4);transform:scale(1.1)}
+  .sheet-banner::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 20%,#111)}
+  .sheet-body{padding:0 24px 24px;margin-top:-80px;position:relative;z-index:2}
+  .sheet-title{font-size:clamp(24px,4vw,36px);font-weight:900;letter-spacing:-.03em;margin-bottom:8px}
+  .sheet-sub{color:var(--muted);font-size:13px;margin-bottom:16px;font-weight:500}
+  .sheet-desc{font-size:14px;line-height:1.6;color:#ccc;margin-bottom:24px;max-width:70ch}
+  .eps-head{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:12px;font-weight:700}
+  .eps{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px}
+  .ep{padding:12px;border-radius:10px;background:rgba(255,255,255,.05);border:1px solid var(--line);text-align:left;transition:all .2s}
+  .ep:hover{background:var(--accent);color:#000;border-color:var(--accent);transform:translateY(-2px)}
+  .ep b{display:block;font-weight:800;font-size:14px}
+  .ep small{font-size:11px;opacity:.7}
+  .close-btn{position:absolute;top:16px;right:16px;z-index:5;width:36px;height:36px;border-radius:50%;background:rgba(0,0,0,.5);backdrop-filter:blur(10px);display:grid;place-items:center;border:1px solid var(--line2);transition:transform .2s}
+  .close-btn:hover{transform:rotate(90deg);background:rgba(255,255,255,.2)}
 
-  /* ── PLAYER ── */
   .player{position:fixed;inset:0;z-index:200;background:#000;display:none;flex-direction:column}
   .player.open{display:flex}
-  .player video{width:100%;height:100%;object-fit:contain;background:#000}
-  .player-bar{position:absolute;top:0;left:0;right:0;padding:16px 20px;display:flex;align-items:center;gap:14px;background:linear-gradient(180deg,rgba(0,0,0,.85),transparent);z-index:5;opacity:1;transition:opacity .3s}
-  .player.hide-bar .player-bar{opacity:0;pointer-events:none}
-  .player-title{font-size:14px;font-weight:600;flex:1}
+  .player video{width:100%;height:100%;object-fit:contain}
+  .player-bar{position:absolute;top:0;left:0;right:0;padding:16px 20px;display:flex;align-items:center;gap:16px;background:linear-gradient(180deg,rgba(0,0,0,.9) 0%,transparent 100%);z-index:5}
+  .player-title{font-size:15px;font-weight:600;flex:1;text-shadow:0 2px 4px #000}
   .player-nav{display:flex;gap:8px}
-  .player-nav button{padding:8px 14px;border-radius:8px;background:rgba(255,255,255,.1);font-size:12px;transition:background .2s}
-  .player-nav button:hover{background:rgba(255,255,255,.2)}
+  .player-nav button{padding:8px 16px;border-radius:8px;background:rgba(255,255,255,.15);font-size:13px;font-weight:600;transition:background .2s;backdrop-filter:blur(5px)}
+  .player-nav button:hover{background:rgba(255,255,255,.3)}
   .player-nav button:disabled{opacity:.3;cursor:not-allowed}
-  .spinner{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:44px;height:44px;border:3px solid rgba(255,255,255,.15);border-top-color:var(--amber);border-radius:50%;animation:spin .8s linear infinite;display:none;z-index:3}
+  .spinner{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:44px;height:44px;border:3px solid rgba(255,255,255,.1);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;display:none;z-index:3}
   .spinner.on{display:block}
   @keyframes spin{to{transform:translate(-50%,-50%) rotate(360deg)}}
 
-  /* ── CONFIG ── */
-  .cfg{width:min(440px,100%);padding:32px;border-radius:20px;background:var(--bg2);border:1px solid var(--line2)}
-  .cfg h2{font-size:22px;font-weight:800;letter-spacing:-.02em;margin-bottom:8px}
-  .cfg p{color:var(--muted);font-size:13px;margin-bottom:20px;line-height:1.6}
-  .cfg input{width:100%;padding:14px 16px;border-radius:10px;background:rgba(255,255,255,.05);border:1px solid var(--line2);font-size:14px;font-family:ui-monospace,monospace;margin-bottom:14px}
-  .cfg input:focus{border-color:var(--amber);box-shadow:0 0 0 3px rgba(255,179,0,.12)}
-  .cfg .btn-primary{width:100%;justify-content:center}
+  .cfg{width:min(400px,100%);padding:32px;border-radius:24px;background:#111;border:1px solid var(--line2);text-align:center}
+  .cfg h2{font-size:24px;font-weight:800;margin-bottom:8px}
+  .cfg p{color:var(--muted);font-size:13px;margin-bottom:24px;line-height:1.6}
+  .cfg input{width:100%;padding:14px 16px;border-radius:12px;background:rgba(255,255,255,.05);border:1px solid var(--line2);font-size:15px;font-family:ui-monospace,monospace;margin-bottom:16px;text-align:center}
+  .cfg input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(139,92,246,.2)}
+  .btn-save{width:100%;padding:14px;border-radius:12px;background:var(--fg);color:#000;font-weight:700;font-size:15px;transition:all .2s}
+  .btn-save:hover{background:var(--accent);color:#fff}
 
-  .toast{position:fixed;bottom:24px;left:50%;transform:translate(-50%,100px);z-index:300;padding:12px 22px;border-radius:999px;background:var(--bg2);border:1px solid var(--line2);font-size:13px;box-shadow:0 10px 40px rgba(0,0,0,.6);transition:transform .4s var(--ease);pointer-events:none}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translate(-50%,100px);z-index:300;padding:12px 24px;border-radius:999px;background:#222;border:1px solid var(--line2);font-size:13px;font-weight:500;box-shadow:0 10px 40px rgba(0,0,0,.8);transition:transform .4s var(--ease);pointer-events:none}
   .toast.show{transform:translate(-50%,0)}
 
-  .reveal{opacity:0;transform:translateY(24px);transition:opacity .7s var(--ease),transform .7s var(--ease)}
+  .reveal{opacity:0;transform:translateY(20px);transition:opacity .6s var(--ease),transform .6s var(--ease)}
   .reveal.in{opacity:1;transform:none}
-
-  @media(prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 </style>
 </head>
 <body>
@@ -172,7 +156,7 @@
   <div class="logo"><span>xs0</span><b>Movie</b></div>
   <div class="search-wrap">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-    <input id="search" type="search" placeholder="Cari film, drama, anime…" autocomplete="off" spellcheck="false">
+    <input id="search" type="search" placeholder="Cari drama, film, anime..." autocomplete="off" spellcheck="false">
   </div>
   <div class="clock" id="clock">--:--</div>
 </header>
@@ -183,13 +167,6 @@
     <div class="hero-kicker" id="kicker">memuat</div>
     <h1 id="greet">Selamat <em>malam</em>.</h1>
     <p id="subgreet">Mau nonton apa sekarang?</p>
-    <div class="hero-actions">
-      <button class="btn btn-primary" onclick="document.getElementById('search').focus()">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-        Cari sekarang
-      </button>
-      <button class="btn btn-ghost" onclick="scrollToRow('trending')">Lihat trending</button>
-    </div>
   </div>
 </section>
 
@@ -203,12 +180,12 @@
   <!-- Section Lanjut Nonton -->
   <section class="row" id="row-history" style="display:none">
     <div class="row-head"><h2>Lanjut Nonton</h2><span id="history-count"></span></div>
-    <div class="rail" id="history-rail"></div>
+    <div class="grid" id="history-grid"></div>
   </section>
 
-  <!-- Section Trending -->
+  <!-- Section Beranda (Otomatis) -->
   <section class="row" id="row-trending">
-    <div class="row-head"><h2>Trending Hari Ini</h2><span>realtime dari Viu</span></div>
+    <div class="row-head"><h2 id="trending-title">Pilihan Hari Ini</h2><span>dari Viu</span></div>
     <div class="grid" id="trending-grid"></div>
   </section>
 </main>
@@ -219,12 +196,12 @@
     <button class="close-btn" onclick="closeDetail()" aria-label="Tutup">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
     </button>
-    <div class="sheet-banner"><img id="d-banner" alt=""></div>
+    <div class="sheet-banner"><img id="d-banner" alt="" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs="></div>
     <div class="sheet-body">
       <h2 class="sheet-title" id="d-title">—</h2>
       <div class="sheet-sub" id="d-sub">—</div>
       <p class="sheet-desc" id="d-desc">—</p>
-      <div class="eps-head">Episode</div>
+      <div class="eps-head">Daftar Episode</div>
       <div class="eps" id="d-eps"></div>
     </div>
   </div>
@@ -234,7 +211,7 @@
 <div class="player" id="player">
   <div class="spinner" id="spinner"></div>
   <div class="player-bar">
-    <button onclick="closePlayer()" aria-label="Tutup" style="width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.12);display:grid;place-items:center">
+    <button onclick="closePlayer()" aria-label="Tutup" style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.15);display:grid;place-items:center">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
     </button>
     <div class="player-title" id="p-title">—</div>
@@ -249,10 +226,10 @@
 <!-- Config API Key -->
 <div class="overlay" id="cfg-overlay">
   <div class="cfg">
-    <h2>Masuk dulu</h2>
-    <p>Tempel API Key xs0Movie lo di sini. Kunci disimpen di perangkat ini doang.</p>
-    <input id="cfg-key" type="password" placeholder="X-API-Key (be5a...)" autocomplete="off">
-    <button class="btn btn-primary" onclick="saveKey()">Simpan & Lanjut</button>
+    <h2>Otorisasi</h2>
+    <p>Masukkan API Key xs0Movie Anda untuk mulai streaming.</p>
+    <input id="cfg-key" type="password" placeholder="X-API-Key..." autocomplete="off">
+    <button class="btn-save" onclick="saveKey()">Simpan & Lanjut</button>
   </div>
 </div>
 
@@ -268,8 +245,8 @@ async function api(path){
   });
   if(!r.ok) {
     if(r.status === 403) {
-      document.getElementById("cfg-overlay").classList.add("open"); // Buka modal kalo key salah
-      throw new Error("API Key salah/kosong");
+      document.getElementById("cfg-overlay").classList.add("open"); 
+      throw new Error("API Key salah atau kosong");
     }
     throw new Error("HTTP " + r.status);
   }
@@ -278,13 +255,12 @@ async function api(path){
 
 function toast(msg){
   const t = document.getElementById("toast");
-  t.textContent = msg;
-  t.classList.add("show");
+  t.textContent = msg; t.classList.add("show");
   clearTimeout(t._h);
   t._h = setTimeout(()=>t.classList.remove("show"), 2400);
 }
 
-/* ── GREETING ── */
+/* ── GREETING & THEME ── */
 const GREETINGS = {
   pagi:   { label:"pagi",   word:"pagi",   accent:"#ffb300", sub:"Kopi dulu, baru lanjut maraton.", tag:"Selamat pagi" },
   siang:  { label:"siang",  word:"siang",  accent:"#38e1ff", sub:"Jam istirahat. Waktunya satu episode.", tag:"Selamat siang" },
@@ -294,8 +270,7 @@ const GREETINGS = {
 
 function getWibHour(){
   const now = new Date();
-  const utc = now.getTime() + now.getTimezoneOffset() * 60000;
-  return new Date(utc + 7 * 3600000).getHours();
+  return new Date(now.getTime() + now.getTimezoneOffset() * 60000 + 7 * 3600000).getHours();
 }
 function greetingFor(h){
   if(h>=4 && h<11) return GREETINGS.pagi;
@@ -310,19 +285,17 @@ function updateGreeting(){
   document.getElementById("kicker").textContent = g.tag;
   document.getElementById("greet").innerHTML = `Selamat <em>${g.word}</em>.`;
   document.getElementById("subgreet").textContent = g.sub;
-  document.getElementById("clock").textContent =
-    new Date().toLocaleTimeString("id-ID",{timeZone:"Asia/Jakarta",hour:"2-digit",minute:"2-digit"});
+  document.getElementById("clock").textContent = new Date().toLocaleTimeString("id-ID",{timeZone:"Asia/Jakarta",hour:"2-digit",minute:"2-digit"});
   orbTheme = g.accent;
 }
-setInterval(updateGreeting, 30000);
+setInterval(updateGreeting, 60000);
 updateGreeting();
 
-/* ── ORB 3D ── */
+/* ── 3D ORB ── */
 let orbTheme = "#8b5cf6";
 const cvs = document.getElementById("orb");
 const ctx = cvs.getContext("2d");
 let W=0,H=0,DPR=Math.min(devicePixelRatio||1,2);
-let orbPaused = false;
 
 function resizeOrb(){
   const rect = cvs.getBoundingClientRect();
@@ -333,8 +306,7 @@ function resizeOrb(){
 window.addEventListener("resize", resizeOrb);
 resizeOrb();
 
-const N = 180;
-const pts = [];
+const N = 180, pts = [];
 for(let i=0;i<N;i++){
   const phi = Math.acos(1 - 2*(i+0.5)/N);
   const theta = Math.PI*(1+Math.sqrt(5))*i;
@@ -344,99 +316,106 @@ const EDGES = [];
 for(let i=0;i<N;i++){
   for(let j=i+1;j<N;j++){
     const dx=pts[i].x-pts[j].x, dy=pts[i].y-pts[j].y, dz=pts[i].z-pts[j].z;
-    if((dx*dx+dy*dy+dz*dz) < 0.075) EDGES.push([i,j]);
+    if((dx*dx+dy*dy+dz*dz) < 0.08) EDGES.push([i,j]);
   }
 }
 
 let t0 = performance.now();
 function drawOrb(now){
-  if(orbPaused) return;
   const t = (now - t0) / 1000;
   const rect = cvs.getBoundingClientRect();
   if(rect.bottom < 0 || rect.top > innerHeight){ requestAnimationFrame(drawOrb); return; }
   ctx.clearRect(0,0,W,H);
 
   const cx = W/2, cy = H/2, R = Math.min(W,H)*0.36;
-  const rotY = t * 0.35, rotX = Math.sin(t*0.22)*0.35;
-  const cosY=Math.cos(rotY), sinY=Math.sin(rotY);
-  const cosX=Math.cos(rotX), sinX=Math.sin(rotX);
+  const rotY = t * 0.4, rotX = Math.sin(t*0.2)*0.4;
+  const cosY=Math.cos(rotY), sinY=Math.sin(rotY), cosX=Math.cos(rotX), sinX=Math.sin(rotX);
+  
   const proj = pts.map(p=>{
-    let x = p.x*cosY - p.z*sinY;
-    let z = p.x*sinY + p.z*cosY;
-    let y = p.y*cosX - z*sinX;
-    z = p.y*sinX + z*cosX;
+    let x = p.x*cosY - p.z*sinY; let z = p.x*sinY + p.z*cosY;
+    let y = p.y*cosX - z*sinX; z = p.y*sinX + z*cosX;
     const persp = 1.9 / (1.9 + z*0.9);
     return { x: cx + x*R*persp, y: cy + y*R*persp, z, persp };
   });
 
-  ctx.lineWidth = 0.7; ctx.strokeStyle = orbTheme;
+  ctx.lineWidth = 0.8; ctx.strokeStyle = orbTheme;
   for(const [i,j] of EDGES){
     const a = proj[i], b = proj[j];
-    ctx.globalAlpha = Math.max(0, 0.09 - ((a.z+b.z)*0.5)*0.09);
+    ctx.globalAlpha = Math.max(0, 0.1 - ((a.z+b.z)*0.5)*0.1);
     ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
   }
   for(const p of proj){
-    ctx.globalAlpha = Math.max(0.08, 0.85 - p.z*0.35);
+    ctx.globalAlpha = Math.max(0.1, 0.9 - p.z*0.4);
     ctx.fillStyle = orbTheme;
-    ctx.beginPath(); ctx.arc(p.x,p.y,Math.max(0.6, 2.6 * p.persp),0,6.283); ctx.fill();
+    ctx.beginPath(); ctx.arc(p.x,p.y,Math.max(0.8, 2.5 * p.persp),0,6.283); ctx.fill();
   }
-  const grd = ctx.createRadialGradient(cx,cy,0,cx,cy,R*1.5);
-  grd.addColorStop(0, orbTheme + "22"); grd.addColorStop(1, "transparent");
-  ctx.globalAlpha = 1; ctx.fillStyle = grd;
-  ctx.beginPath(); ctx.arc(cx,cy,R*1.5,0,6.283); ctx.fill();
-
   requestAnimationFrame(drawOrb);
 }
 requestAnimationFrame(drawOrb);
-document.addEventListener("visibilitychange", ()=>{ orbPaused = document.hidden; });
 
-/* ── HELPERS ── */
+/* ── UI HELPERS ── */
 function placeholder(seed){
   const h = [...String(seed)].reduce((a,c)=>a+c.charCodeAt(0),0)%360;
-  return `linear-gradient(135deg,hsl(${h} 60% 22%),hsl(${(h+40)%360} 70% 12%))`;
+  return `linear-gradient(135deg,hsl(${h} 70% 25%),hsl(${(h+50)%360} 80% 10%))`;
 }
 function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
 
-/* ── TRENDING ── */
-async function loadTrending(){
-  const grid = document.getElementById("trending-grid");
-  grid.innerHTML = Array(8).fill('<div class="skel"></div>').join("");
-  try{
-    const data = await api("/api/home");
-    const list = data.data || data.recommendations || [];
-    if(!list.length) throw new Error("kosong");
-    grid.innerHTML = "";
-    list.slice(0,12).forEach((s,i)=>{
-      const id = s.series_id || s.id;
-      grid.appendChild(makeCard({ id, title: `Series ${id}`, index:i }));
-    });
-  }catch(e){
-    grid.innerHTML = `<div class="empty" style="grid-column:1/-1"><b>Belum bisa ambil trending</b>${e.message}</div>`;
-  }
-}
-
-function makeCard({ id, title, sub, index=0, poster }){
+function makeCard({ id, title, sub, index=0 }){
   const el = document.createElement("div");
   el.className = "card reveal";
   el.style.transitionDelay = (index * 30) + "ms";
   el.innerHTML = `
-    ${poster ? `<img loading="lazy" src="${poster}" alt="" onerror="this.style.display='none'">` : `<div style="position:absolute;inset:0;background:${placeholder(id)}"></div>`}
-    <div class="card-badge">#${index+1}</div>
+    <div style="position:absolute;inset:0;background:${placeholder(title)};display:flex;align-items:center;justify-content:center;font-size:48px;font-weight:900;color:rgba(255,255,255,.15)">${escapeHtml(title.charAt(0))}</div>
+    <div class="card-badge">HD</div>
     <div class="card-meta">
       <h3>${escapeHtml(title || "Tanpa judul")}</h3>
-      ${sub?`<small>${escapeHtml(sub)}</small>`:""}
+      ${sub?`<small style="display:block;font-size:11px;color:var(--muted);margin-top:2px">${escapeHtml(sub)}</small>`:""}
     </div>`;
   el.onclick = ()=>openDetail(id, title);
   return el;
 }
 
-/* ── SEARCH (AUTO SCROLL) ── */
+const io = new IntersectionObserver(entries=>{
+  entries.forEach(en=>{ if(en.isIntersecting){ en.target.classList.add("in"); io.unobserve(en.target); } });
+}, { threshold:.1 });
+function observeReveals(){ document.querySelectorAll(".reveal:not(.in)").forEach(el=>io.observe(el)); }
+
+/* ── LOAD BERANDA (REPLACED /api/home WITH SEARCH) ── */
+async function loadHome(){
+  const grid = document.getElementById("trending-grid");
+  grid.innerHTML = Array(10).fill('<div class="skel"></div>').join("");
+  
+  try {
+    // Nembak API Search pake keyword "Drama" buat ngeisi beranda
+    const data = await api("/api/search?q=Drama");
+    const series = data.series || [];
+    grid.innerHTML = "";
+    
+    if(series.length === 0) {
+      grid.innerHTML = `<div class="empty"><b>Belum ada data</b>Gagal mengambil data dari server.</div>`;
+      return;
+    }
+    
+    // Tampilin 15 film pertama
+    series.slice(0, 15).forEach((s, i) => {
+      grid.appendChild(makeCard({ id: s.id, title: s.name, index: i }));
+    });
+    observeReveals();
+  } catch(e) {
+    grid.innerHTML = `<div class="empty"><b>Koneksi gagal</b>${e.message}</div>`;
+  }
+}
+
+/* ── SEARCH LOGIC ── */
 let searchT;
 const searchInput = document.getElementById("search");
 searchInput.addEventListener("input", ()=>{
   clearTimeout(searchT);
   const q = searchInput.value.trim();
-  if(!q){ document.getElementById("row-results").style.display = "none"; return; }
+  if(!q){ 
+    document.getElementById("row-results").style.display = "none"; 
+    return; 
+  }
   searchT = setTimeout(()=>runSearch(q), 450);
 });
 
@@ -451,36 +430,35 @@ async function runSearch(q){
   count.textContent = "";
   grid.innerHTML = Array(6).fill('<div class="skel"></div>').join("");
   
-  // FITUR BARU: Otomatis scroll ke hasil pencarian
   row.scrollIntoView({ behavior: "smooth", block: "start" });
 
   try{
     const data = await api("/api/search?q=" + encodeURIComponent(q));
     const series = data.series || [];
-    const actors = data.actor || [];
     count.textContent = `${series.length} judul`;
     grid.innerHTML = "";
-    if(!series.length && !actors.length){
-      grid.innerHTML = `<div class="empty" style="grid-column:1/-1"><b>Nggak ketemu</b>Coba kata kunci lain.</div>`;
+    
+    if(!series.length){
+      grid.innerHTML = `<div class="empty"><b>Nggak ketemu</b>Coba kata kunci lain.</div>`;
       return;
     }
     series.forEach((s,i)=>{
-      grid.appendChild(makeCard({ id:s.id, title:s.name, sub: s.weight ? `skor ${s.weight}` : "", index:i }));
+      grid.appendChild(makeCard({ id: s.id, title: s.name, sub: s.weight ? `skor ${s.weight}` : "", index: i }));
     });
   }catch(e){
-    grid.innerHTML = `<div class="empty" style="grid-column:1/-1"><b>Pencarian gagal</b>${escapeHtml(e.message)}</div>`;
+    grid.innerHTML = `<div class="empty"><b>Pencarian gagal</b>${escapeHtml(e.message)}</div>`;
   }
 }
 
-/* ── DETAIL & PLAYER ── */
+/* ── DETAILS & PLAYER ── */
 let currentSeries = null;
 async function openDetail(id, fallbackTitle){
   const overlay = document.getElementById("detail");
   document.getElementById("d-title").textContent = fallbackTitle || `Series ${id}`;
-  document.getElementById("d-sub").textContent = "memuat…";
+  document.getElementById("d-sub").textContent = "Memuat data...";
   document.getElementById("d-desc").textContent = "";
-  document.getElementById("d-eps").innerHTML = "";
-  document.getElementById("d-banner").style.background = placeholder(id);
+  document.getElementById("d-eps").innerHTML = Array(6).fill('<div class="skel" style="aspect-ratio:auto;height:48px"></div>').join("");
+  document.getElementById("d-banner").style.background = placeholder(fallbackTitle || id);
   document.getElementById("d-banner").removeAttribute("src");
   overlay.classList.add("open");
 
@@ -492,8 +470,9 @@ async function openDetail(id, fallbackTitle){
     const first = eps[0] || {};
     const title = (first.synopsis || fallbackTitle || `Series ${id}`).replace(/\s*-\s*Episode\s*\d+.*$/i,"").trim();
     document.getElementById("d-title").textContent = title;
-    document.getElementById("d-sub").textContent = [first.series_category_name, `${eps.length} episode`].filter(Boolean).join(" · ");
+    document.getElementById("d-sub").textContent = [first.series_category_name, `${eps.length} Episode`].filter(Boolean).join(" • ");
     document.getElementById("d-desc").textContent = first.description || first.synopsis || "Sinopsis belum tersedia.";
+    
     if(first.cover_landscape_image_url){
       const img = document.getElementById("d-banner");
       img.src = first.cover_landscape_image_url;
@@ -503,7 +482,7 @@ async function openDetail(id, fallbackTitle){
     const box = document.getElementById("d-eps");
     box.innerHTML = "";
     if(!eps.length){
-      box.innerHTML = `<div class="empty" style="grid-column:1/-1">Belum ada episode.</div>`;
+      box.innerHTML = `<div class="empty" style="padding:20px">Belum ada episode.</div>`;
       return;
     }
     eps.forEach(ep=>{
@@ -515,16 +494,15 @@ async function openDetail(id, fallbackTitle){
       box.appendChild(b);
     });
   }catch(e){
-    document.getElementById("d-sub").textContent = "gagal memuat";
-    document.getElementById("d-desc").textContent = e.message;
+    document.getElementById("d-sub").textContent = "Gagal memuat episode.";
+    document.getElementById("d-eps").innerHTML = "";
   }
 }
 function closeDetail(){ document.getElementById("detail").classList.remove("open"); }
 
 const player = document.getElementById("player");
 const video = document.getElementById("video");
-let hls = null;
-let activeEp = null, activeSeries = null;
+let hls = null, activeEp = null, activeSeries = null;
 
 function findUrl(obj){
   if(!obj) return null;
@@ -553,7 +531,7 @@ async function playEpisode(ep, series){
   try{
     const data = await api(`/api/play/${ep.product_id}?series_id=${series.id}`);
     const url = findUrl(data);
-    if(!url) throw new Error("URL stream nggak ketemu di response");
+    if(!url) throw new Error("URL stream nggak ketemu.");
     attachStream(url);
     saveHistory(series.id, ep, series.title);
   }catch(e){
@@ -567,8 +545,7 @@ function attachStream(url){
   if(url.endsWith(".m3u8")){
     if(window.Hls && Hls.isSupported()){
       hls = new Hls({ enableWorker:true, lowLatencyMode:true, backBufferLength:60 });
-      hls.loadSource(url);
-      hls.attachMedia(video);
+      hls.loadSource(url); hls.attachMedia(video);
       hls.on(Hls.Events.MANIFEST_PARSED, ()=>{
         document.getElementById("spinner").classList.remove("on");
         video.play().catch(()=>{});
@@ -580,8 +557,7 @@ function attachStream(url){
       video.src = url; video.play().catch(()=>{});
     }
   } else {
-    video.src = url;
-    video.play().catch(()=>{});
+    video.src = url; video.play().catch(()=>{});
     document.getElementById("spinner").classList.remove("on");
   }
 }
@@ -622,21 +598,20 @@ function saveHistory(seriesId, ep, title){
 function renderHistory(){
   const h = JSON.parse(localStorage.getItem("xs0.history") || "[]");
   const row = document.getElementById("row-history");
-  const rail = document.getElementById("history-rail");
+  const grid = document.getElementById("history-grid");
   if(!h.length){ row.style.display = "none"; return; }
   row.style.display = "block";
   document.getElementById("history-count").textContent = `${h.length} judul`;
-  rail.innerHTML = "";
+  grid.innerHTML = "";
   h.forEach((item,i)=>{
-    const card = makeCard({ id: item.seriesId, title: item.title || `Series ${item.seriesId}`, sub:`EP ${item.ep}`, index:i });
-    rail.appendChild(card);
+    grid.appendChild(makeCard({ id: item.seriesId, title: item.title || `Series ${item.seriesId}`, sub:`Lanjut EP ${item.ep}`, index:i }));
   });
 }
 
 /* ── INIT ── */
 function saveKey(){
   const v = document.getElementById("cfg-key").value.trim();
-  if(!v){ toast("Key kosong"); return; }
+  if(!v){ toast("Key kosong!"); return; }
   API_KEY = v;
   localStorage.setItem("xs0.key", v);
   document.getElementById("cfg-overlay").classList.remove("open");
@@ -644,25 +619,14 @@ function saveKey(){
 }
 if(!API_KEY){ document.getElementById("cfg-overlay").classList.add("open"); }
 
-const io = new IntersectionObserver(entries=>{
-  entries.forEach(en=>{ if(en.isIntersecting){ en.target.classList.add("in"); io.unobserve(en.target); } });
-}, { threshold:.08 });
-function observeReveals(){ document.querySelectorAll(".reveal:not(.in)").forEach(el=>io.observe(el)); }
-
-function scrollToRow(id){
-  const el = document.getElementById("row-" + id);
-  if(el) el.scrollIntoView({ behavior:"smooth", block:"start" });
-}
-
 window.addEventListener("scroll", ()=>{
-  document.getElementById("hdr").classList.toggle("solid", scrollY > 40);
+  document.getElementById("hdr").classList.toggle("solid", scrollY > 20);
 }, { passive:true });
 
 async function init(){
   if(!API_KEY) return;
   renderHistory();
-  await loadTrending();
-  observeReveals();
+  await loadHome(); // Nembak API search buat isi halaman depan
 }
 init();
 </script>
