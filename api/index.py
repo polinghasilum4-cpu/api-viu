@@ -1,7 +1,7 @@
-# api/index.py — Viu Auto API (Exact Match Search UA)
+# api/index.py — Viu Auto API (Strict Headers Search)
 import os, json, hashlib, logging, re, random, asyncio
 from typing import Optional, Dict, Any
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException
 from curl_cffi.requests import AsyncSession, Session
 import httpx
 
@@ -16,10 +16,10 @@ COMMON = {
     "platformFlagLabel": "web", "areaId": "1000",
     "languageFlagId": "8", "countryCode": "ID", "os_flag_id": "1",
 }
-# UA persis kayak di curl lu
 UA = ("Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/157.0.0.0 Mobile Safari/537.36")
 
+# --- CLOUDFLARE KV SETUP ---
 CF_ACCOUNT = os.environ.get("CF_ACCOUNT_ID", "")
 CF_KV_ID = os.environ.get("CF_KV_NAMESPACE_ID", "")
 CF_TOKEN = os.environ.get("CF_KV_TOKEN", "")
@@ -41,6 +41,7 @@ def kv_set(key: str, value: str, ex: int = 3600) -> None:
                   content=value, params={"expiration_ttl": str(ex)})
     except: pass
 
+# --- AUTO HARVEST DENGAN CONCURRENT PROXY ---
 async def test_proxy(proxy: str, headers: dict) -> Optional[str]:
     try:
         px = {"http": f"http://{proxy}", "https": f"http://{proxy}"}
@@ -129,18 +130,27 @@ def search(q: str):
     cached = kv_get(ckey)
     if cached: return json.loads(cached)
 
-    # Paksa pake raw query string persis kayak curl lu biar pasti dapet
     token = _bearer()
+    
+    # PERSIS KAYAK HEADER CURL LU
     headers = {
-        "accept": "application/json, text/plain, */*",
+        "sec-ch-ua-platform": '"Android"',
         "authorization": f"Bearer {token}",
+        "sec-ch-ua": '"Not-A.Brand";v="99", "Google Chrome";v="157", "Chromium";v="157"',
+        "sec-ch-ua-mobile": "?1",
         "user-agent": UA,
+        "accept": "application/json, text/plain, */*",
         "origin": "https://www.viu.com",
+        "sec-fetch-site": "same-site",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-dest": "empty",
         "referer": "https://www.viu.com/",
+        "accept-language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
+        "priority": "u=1, i"
     }
-    # urlencode q biar spasi jadi %20 atau +
-    from urllib.parse import quote
-    keyword_encoded = quote(q)
+    
+    # Ganti spasi jadi + (bukan %20)
+    keyword_encoded = q.replace(" ", "+")
     
     url = f"{BASE}?platform_flag_label=web&area_id=1000&language_flag_id=8&ut=0&platformFlagLabel=web&areaId=1000&languageFlagId=8&countryCode=ID&r=%2Fsearch%2Fprediction&keyword={keyword_encoded}"
     
