@@ -1,4 +1,4 @@
-# api/index.py — Viu Auto API (Final + Home + Browse Fix)
+# api/index.py — Viu Auto API (Resilient Edition)
 import os, json, hashlib, logging, re, random, asyncio
 from typing import Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, Query
@@ -56,47 +56,36 @@ async def test_proxy(proxy: str, headers: dict) -> Optional[str]:
             if r2.status_code == 200:
                 tok = r2.json().get("data", {}).get("token")
                 if tok: return tok
-    except Exception:
-        pass
+    except Exception: pass
     return None
 
 async def auto_harvest_token_async() -> str:
-    log.info("Nyari token baru pake concurrent proxy...")
     proxies_list = []
     try:
         r = httpx.get("https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&protocol=http&proxy_format=ipport&format=text", timeout=10)
         proxies_list = r.text.splitlines()
         random.shuffle(proxies_list)
         proxies_list = proxies_list[:40]
-    except:
-        pass
+    except: pass
         
-    if not proxies_list:
-        return ""
-
+    if not proxies_list: return ""
     headers = {"user-agent": UA, "accept-language": "id-ID,id;q=0.9"}
     tasks = [test_proxy(proxy.strip(), headers) for proxy in proxies_list]
     
     for coro in asyncio.as_completed(tasks):
         tok = await coro
-        if tok:
-            log.info("Sukses dapet token pake proxy!")
-            return tok
-
+        if tok: return tok
     return ""
 
 def auto_harvest_token() -> str:
-    try:
-        return asyncio.run(auto_harvest_token_async())
-    except:
-        return ""
+    try: return asyncio.run(auto_harvest_token_async())
+    except: return ""
 
 def _bearer() -> str:
     b = kv_get("viu:bearer")
     if b: return b
     b = auto_harvest_token()
-    if b:
-        kv_set("viu:bearer", b, ex=43200)
+    if b: kv_set("viu:bearer", b, ex=43200)
     return b
 
 def _call(route: str, params: Optional[Dict] = None) -> Any:
@@ -104,19 +93,31 @@ def _call(route: str, params: Optional[Dict] = None) -> Any:
     if params: q.update(params)
     headers = {"accept": "application/json, text/plain, */*", "authorization": f"Bearer {_bearer()}", "user-agent": UA, "origin": "https://www.viu.com", "referer": "https://www.viu.com/"}
     
-    with Session(impersonate="chrome") as s:
-        r = s.get(BASE, params=q, headers=headers, timeout=15)
-        
-    if r.status_code in (401, 403):
-        kv_set("viu:bearer", "", ex=1)
-        headers["authorization"] = f"Bearer {auto_harvest_token()}"
+    try:
         with Session(impersonate="chrome") as s:
             r = s.get(BASE, params=q, headers=headers, timeout=15)
+            if r.status_code in (401, 403):
+                kv_set("viu:bearer", "", ex=1)
+                headers["authorization"] = f"Bearer {auto_harvest_token()}"
+                r = s.get(BASE, params=q, headers=headers, timeout=15)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Koneksi ke Viu gagal: {str(e)}")
 
-    r.raise_for_status()
-    data = r.json()
+    if r.status_code != 200:
+        raise HTTPException(status_code=r.status_code, detail=f"Viu API nolak request (HTTP {r.status_code})")
+
+    try:
+        data = r.json()
+    except:
+        raise HTTPException(status_code=500, detail="Viu balikin format bukan JSON")
+
+    # PENGAMAN ANTI-CRASH: Kadang Viu balikin string/null, bukan dict.
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=500, detail="Format response Viu tidak dikenal.")
+
     if data.get("status", {}).get("code") != 0:
-        raise HTTPException(502, f"viu error: {data.get('status')}")
+        raise HTTPException(502, f"Viu error: {data.get('status', {}).get('message', 'Unknown')}")
+        
     return data.get("data", {})
 
 app = FastAPI(title="Viu Auto API")
@@ -135,14 +136,43 @@ def health():
 
 @app.get("/api/home")
 def home():
-    """Nampilin daftar kategori dan film trending di homepage Viu."""
+    """Mencoba API Viu. Jika gagal, menyedot data dari HTML halaman utama."""
     ckey = "viu:home"
     cached = kv_get(ckey)
     if cached: return json.loads(cached)
     
-    data = _call("/vod/home")
-    kv_set(ckey, json.dumps(data, ensure_ascii=False), ex=1800)
-    return data
+    # 1. Coba jalur API resmi
+    try:
+        data = _call("/vod/home")
+        if data and isinstance(data, dict):
+            kv_set(ckey, json.dumps(data, ensure_ascii=False), ex=1800)
+            return data
+    except Exception:
+        pass
+
+    # 2. Jika API ditolak, Scrape HTML (bypass)
+    try:
+        with Session(impersonate="chrome") as s:
+            r = s.get(VIU_HOME, headers={"user-agent": UA}, timeout=15)
+            if r.status_code == 200 and "not available in your country" not in r.text:
+                # Cari semua ID series di dalam HTML
+                series_ids = list(set(re.findall(r'"series_id":\s*"(\d+)"', r.text)))
+                # Ambil 20 ID pertama
+                fallback_list = [{"series_id": sid} for sid in series_ids[:20]]
+                
+                result = {
+                    "status": "success", 
+                    "method": "html_scrape",
+                    "message": "Data diambil dari halaman depan (API ditolak Viu)",
+                    "data": fallback_list
+                }
+                if fallback_list:
+                    kv_set(ckey, json.dumps(result, ensure_ascii=False), ex=1800)
+                    return result
+    except Exception as e:
+        log.error(f"Scrape HTML gagal: {e}")
+
+    return {"status": "error", "message": "Gagal mengambil data home."}
 
 @app.get("/api/series/{series_id}")
 def series(series_id: str, refresh: bool = False):
@@ -155,6 +185,10 @@ def series(series_id: str, refresh: bool = False):
     result = {"series_id": series_id, "episodes": plist}
     kv_set(ckey, json.dumps(result, ensure_ascii=False), ex=21600)
     return result
+
+@app.get("/api/episodes/{series_id}")
+def episodes(series_id: str):
+    return series(series_id)["episodes"]
 
 @app.get("/api/search")
 def search(q: str, size: int = 20):
@@ -172,7 +206,6 @@ def search(q: str, size: int = 20):
         ("/vod/product-list", {"search": q, "size": size}),
     ]
 
-    last_err = None
     for route, params in attempts:
         try:
             data = _call(route, params)
@@ -181,35 +214,29 @@ def search(q: str, size: int = 20):
                 result = {"query": q, "count": len(plist), "product_list": plist}
                 kv_set(ckey, json.dumps(result, ensure_ascii=False), ex=3600)
                 return result
-        except HTTPException as e:
-            last_err = e.detail
+        except Exception:
             continue
 
     return {"query": q, "count": 0, "product_list": [], "note": "Search kosong."}
 
 @app.get("/api/browse")
-def browse(category: str = Query(None), page: int = 1, size: int = 20, sort: str = "desc"):
-    # Viu kadang minta category_id (angka) bukan string. Kita coba beberapa opsi.
-    ckey = f"viu:browse:{category}:{page}:{size}"
+def browse(size: int = 20, page: int = 1, sort: str = "desc", filter_id: str = "1"):
+    """Coba browse generic. Viu ID biasanya pake filter_id (1=Movie, 2=Series)."""
+    ckey = f"viu:browse:{filter_id}:{page}:{size}"
     cached = kv_get(ckey)
     if cached: return json.loads(cached)
 
-    params = {"size": size, "sort": sort, "start": (page - 1) * size}
-    if category:
-        # Coba tebak ID dari string kategori (misal drama=1, movie=2)
-        cat_map = {"drama": "1", "movie": "2", "anime": "3", "variety": "4"}
-        cat_id = cat_map.get(category.lower(), category)
-        params["category_id"] = cat_id
+    params = {"size": size, "sort": sort, "start": (page - 1) * size, "filter_id": filter_id}
+    try:
+        data = _call("/vod/product-list", params)
+        plist = data.get("product_list", [])
+        if plist:
+            kv_set(ckey, json.dumps(data, ensure_ascii=False), ex=1800)
+            return data
+    except Exception as e:
+        log.warning(f"Browse filter_id={filter_id} gagal: {e}")
 
-    data = _call("/vod/product-list", params)
-    # Kadang Viu balikin null kalau kategori salah. Kita pastiin balikin array kosong.
-    if "product_list" not in data or data["product_list"] is None:
-        data["product_list"] = []
-        
-    if data["product_list"]:
-        kv_set(ckey, json.dumps(data, ensure_ascii=False), ex=1800)
-        
-    return data
+    return {"product_list": [], "note": "Viu nolak browse. Coba ganti filter_id=2 atau pakai /api/search."}
 
 @app.get("/api/play/{product_id}")
 def play(product_id: str, series_id: str = None):
