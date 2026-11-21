@@ -1,4 +1,4 @@
-# api/index.py — Viu Auto API (Debug Search Edition)
+# api/index.py — Viu Auto API (ID Proxy Search)
 import os, json, hashlib, logging, re, random, asyncio
 from typing import Optional, Dict, Any
 from fastapi import FastAPI, HTTPException
@@ -41,6 +41,18 @@ def kv_set(key: str, value: str, ex: int = 3600) -> None:
                   content=value, params={"expiration_ttl": str(ex)})
     except: pass
 
+# --- PROXY ROTATOR ---
+async def get_id_proxies():
+    proxies = []
+    try:
+        # Ambil proxy khusus Indonesia dari ProxyScrape
+        url = "https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&protocol=http&proxy_format=ipport&format=text&country=ID"
+        r = httpx.get(url, timeout=10)
+        proxies = r.text.splitlines()
+        random.shuffle(proxies)
+    except: pass
+    return proxies[:20]
+
 async def test_proxy(proxy: str, headers: dict) -> Optional[str]:
     try:
         px = {"http": f"http://{proxy}", "https": f"http://{proxy}"}
@@ -58,13 +70,7 @@ async def test_proxy(proxy: str, headers: dict) -> Optional[str]:
     return None
 
 async def auto_harvest_token_async() -> str:
-    proxies_list = []
-    try:
-        r = httpx.get("https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&protocol=http&proxy_format=ipport&format=text", timeout=10)
-        proxies_list = r.text.splitlines()
-        random.shuffle(proxies_list)
-        proxies_list = proxies_list[:40]
-    except: pass
+    proxies_list = await get_id_proxies()
     if not proxies_list: return ""
     headers = {"user-agent": UA, "accept-language": "id-ID,id;q=0.9"}
     tasks = [test_proxy(proxy.strip(), headers) for proxy in proxies_list]
@@ -131,7 +137,6 @@ def search(q: str):
 
     token = _bearer()
     
-    # Persis kayak curl lu
     headers = {
         "sec-ch-ua-platform": '"Android"',
         "authorization": f"Bearer {token}",
@@ -147,26 +152,45 @@ def search(q: str):
     keyword_encoded = q.replace(" ", "+")
     url = f"{BASE}?platform_flag_label=web&area_id=1000&language_flag_id=8&ut=0&platformFlagLabel=web&areaId=1000&languageFlagId=8&countryCode=ID&r=%2Fsearch%2Fprediction&keyword={keyword_encoded}"
     
-    with Session(impersonate="chrome") as s:
-        r = s.get(url, headers=headers, timeout=15)
-        
-    if r.status_code != 200:
-        raise HTTPException(502, f"Viu HTTP {r.status_code}")
-        
-    data = r.json()
+    # 1. Coba koneksi langsung dulu (kalo hoki dapet ID)
+    try:
+        with Session(impersonate="chrome") as s:
+            r = s.get(url, headers=headers, timeout=10)
+        data = r.json()
+        if data.get("data", {}).get("series"):
+            result = {"query": q, "series": data["data"]["series"], "actor": data["data"].get("actor", [])}
+            kv_set(ckey, json.dumps(result, ensure_ascii=False), ex=3600)
+            return result
+    except Exception: pass
+
+    # 2. Kalo gagal/kosong, tembak pake Proxy ID
+    log.info("Search direct gagal, nyoba pake proxy ID...")
+    proxies = asyncio.run(get_id_proxies())
     
-    # KITA TAMBAHIN _DEBUG BIAR KELIATAN VIU BALAS APA
-    result = {
-        "query": q,
-        "series": data.get("data", {}).get("series", []),
-        "actor": data.get("data", {}).get("actor", []),
-        "_debug_viu_response": data  # <--- INI KUNCINYA
-    }
-    
-    if result["series"] or result["actor"]:
-        kv_set(ckey, json.dumps(result, ensure_ascii=False), ex=3600)
-        
-    return result
+    for proxy in proxies:
+        try:
+            px = {"http": f"http://{proxy}", "https": f"http://{proxy}"}
+            with Session(impersonate="chrome", proxies=px) as s:
+                r = s.get(url, headers=headers, timeout=8)
+            data = r.json()
+            
+            # Cek apakah beneran dapet ID
+            area_code = data.get("server", {}).get("area", {}).get("country", {}).get("code")
+            if area_code == "ID":
+                result_data = data.get("data", {})
+                result = {
+                    "query": q,
+                    "series": result_data.get("series", []),
+                    "actor": result_data.get("actor", [])
+                }
+                if result["series"] or result["actor"]:
+                    kv_set(ckey, json.dumps(result, ensure_ascii=False), ex=3600)
+                    log.info(f"Search sukses pake proxy {proxy}")
+                    return result
+        except Exception:
+            continue
+
+    return {"query": q, "series": [], "actor": [], "note": "Proxy ID sedang down, coba lagi nanti."}
 
 @app.get("/api/home")
 def home():
