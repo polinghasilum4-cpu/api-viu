@@ -1,4 +1,4 @@
-# api/index.py — Viu Auto API (Header Spoof Edition)
+# api/index.py — Viu Auto API (Proxy Rotator Edition)
 import os, json, hashlib, logging, re, random
 from typing import Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, Query
@@ -19,6 +19,7 @@ COMMON = {
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
 
+# --- CLOUDFLARE KV SETUP ---
 CF_ACCOUNT = os.environ.get("CF_ACCOUNT_ID", "")
 CF_KV_ID = os.environ.get("CF_KV_NAMESPACE_ID", "")
 CF_TOKEN = os.environ.get("CF_KV_TOKEN", "")
@@ -40,69 +41,63 @@ def kv_set(key: str, value: str, ex: int = 3600) -> None:
                   content=value, params={"expiration_ttl": str(ex)})
     except: pass
 
+# --- AUTO HARVEST DENGAN PROXY ROTATOR ---
 def auto_harvest_token() -> str:
-    log.info("Mancing token baru pake trik Spoof IP...")
-    # Pake IP Telkom/Indosat biar dikira orang Indonesia
-    fake_id_ip = f"114.122.{random.randint(1, 255)}.{random.randint(1, 255)}"
+    log.info("Nyari token baru pake rotasi proxy...")
     
-    headers = {
-        "user-agent": UA, 
-        "accept-language": "id-ID,id;q=0.9",
-        "x-forwarded-for": fake_id_ip,
-        "x-real-ip": fake_id_ip,
-        "x-viu-ip": fake_id_ip
-    }
+    # Ambil daftar proxy gratis dari GitHub
+    proxies_list = []
+    try:
+        r = httpx.get("https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt", timeout=10)
+        proxies_list = r.text.splitlines()
+        random.shuffle(proxies_list) # Acak biar dapet IP beda-beda
+        proxies_list = proxies_list[:30] # Coba 30 proxy pertama
+    except:
+        pass
+        
+    headers = {"user-agent": UA, "accept-language": "id-ID,id;q=0.9"}
     
-    with creq.Session(impersonate="chrome") as s:
-        # 1. Tembak halaman depan
+    for proxy in proxies_list:
+        proxy = proxy.strip()
+        if not proxy: continue
+        log.info(f"Coba proxy: {proxy}")
         try:
-            r = s.get(VIU_HOME, headers=headers, timeout=15)
-            if "not available in your country" not in r.text:
-                m = re.search(r'(eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+)', r.text)
-                if m:
-                    log.info("Token ketemu di HTML (Spoof sukses)!")
-                    return m.group(1)
-            else:
-                log.warning("Spoof header ditolak Viu.")
-        except Exception as e:
-            log.warning(f"Gagal buka home: {e}")
+            px = {"http": f"http://{proxy}", "https": f"http://{proxy}"}
+            with creq.Session(impersonate="chrome", proxies=px) as s:
+                # Tembak halaman depan Viu
+                r1 = s.get(VIU_HOME, headers=headers, timeout=8)
+                if "not available in your country" not in r1.text:
+                    m = re.search(r'(eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+)', r1.text)
+                    if m:
+                        log.info(f"Sukses dapet token pake proxy {proxy}!")
+                        return m.group(1)
+                
+                # Tembak API Guest
+                guest_url = "https://api-gateway-global.viu.com/api/mobile?r=/vod/login/guest&platform_flag_label=web&area_id=1000&language_flag_id=8&ut=0&countryCode=ID"
+                r2 = s.get(guest_url, headers=headers, timeout=8)
+                if r2.status_code == 200:
+                    tok = r2.json().get("data", {}).get("token")
+                    if tok:
+                        log.info(f"Sukses dapet token pake proxy {proxy}!")
+                        return tok
+        except Exception:
+            continue
 
-        # 2. Tembak API Guest
-        try:
-            guest_url = "https://api-gateway-global.viu.com/api/mobile?r=/vod/login/guest&platform_flag_label=web&area_id=1000&language_flag_id=8&ut=0&countryCode=ID"
-            r2 = s.get(guest_url, headers=headers, timeout=10)
-            if r2.status_code == 200:
-                data = r2.json()
-                tok = data.get("data", {}).get("token")
-                if tok: 
-                    log.info("Token ketemu dari Guest API (Spoof sukses)!")
-                    return tok
-        except Exception as e:
-            log.warning(f"Gagal guest login: {e}")
-            
-    raise HTTPException(500, "Gagal dapet token. Viu ngeblokir IP Vercel.")
+    # Kalau semua proxy mati, pake token asli dari lo (siapa tau masih idup)
+    return "eyJhbGciOiJBMTI4S1ciLCJlbmMiOiJBMTI4Q0JDLUhTMjU2In0.Hv2g6GGzyq-g35coFi7tGkUpXhtMZD5c2pnozynjhD6w7kUqIlFQoA.1ZF-h1ORbdpl6__sxza2Iw.N3YrDC25A1n25LaOAiLj3AycPUxM9ryiCHfInFRw8objq39NOCxfsC67gw0_q4rEPM8YYuVakwe1n55S8xuPcqQSx5f0z-7h1ZrFS_ABQKUDxnwHmw4L3qF1Nsmi_66CAzAwulCzs3o0ro2uR1Dc2fMM5yrfUDbe_davrV9ekRVwYkEZ0So2KqQb8ehd8mpmPPDaccpnw9x9U5PS_MImNma8710Ib6QW68vrLXRDjnQ.QCaYCMW4Cnk8hSSM0eUZMQ"
 
 def _bearer() -> str:
     b = kv_get("viu:bearer")
     if b: return b
     b = auto_harvest_token()
-    kv_set("viu:bearer", b, ex=43200) # Simpen 12 jam
+    if b:
+        kv_set("viu:bearer", b, ex=43200) # Simpen 12 jam
     return b
 
 def _call(route: str, params: Optional[Dict] = None) -> Any:
     q = {**COMMON, "r": route}
     if params: q.update(params)
-    
-    fake_id_ip = f"114.122.{random.randint(1, 255)}.{random.randint(1, 255)}"
-    headers = {
-        "accept": "application/json, text/plain, */*", 
-        "authorization": f"Bearer {_bearer()}", 
-        "user-agent": UA, 
-        "origin": "https://www.viu.com", 
-        "referer": "https://www.viu.com/",
-        "x-forwarded-for": fake_id_ip,
-        "x-viu-ip": fake_id_ip
-    }
+    headers = {"accept": "application/json, text/plain, */*", "authorization": f"Bearer {_bearer()}", "user-agent": UA, "origin": "https://www.viu.com", "referer": "https://www.viu.com/"}
     
     with creq.Session(impersonate="chrome") as s:
         r = s.get(BASE, params=q, headers=headers, timeout=15)
@@ -123,7 +118,7 @@ app = FastAPI(title="Viu Auto API")
 
 @app.get("/")
 def root():
-    return {"status": "ok", "message": "Viu API nyala. Buka /api/health atau /api/series/77893"}
+    return {"status": "ok", "message": "Viu API nyala."}
 
 @app.get("/api/health")
 def health():
