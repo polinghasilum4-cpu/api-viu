@@ -1,5 +1,5 @@
-# api/index.py — Viu API Full Auto
-import os, json, hashlib, logging, re, time
+# api/index.py — Viu Auto API (Vercel SG)
+import os, json, hashlib, logging, re
 from typing import Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, Query
 from curl_cffi import requests as creq
@@ -46,10 +46,9 @@ def auto_harvest_token() -> str:
     headers = {"user-agent": UA, "accept-language": "id-ID,id;q=0.9"}
     
     with creq.Session(impersonate="chrome") as s:
-        # 1. Coba tembak halaman depan Viu
         try:
             r = s.get(VIU_HOME, headers=headers, timeout=15)
-            # Cari string token JWE (panjang, ada 5 segmen dipisah titik)
+            # Cari string token JWE
             m = re.search(r'(eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+)', r.text)
             if m:
                 log.info("Token ketemu di HTML Viu!")
@@ -57,7 +56,6 @@ def auto_harvest_token() -> str:
         except Exception as e:
             log.warning(f"Gagal buka home: {e}")
 
-        # 2. Kalau gagal, coba pancing via API (Guest Login)
         try:
             guest_url = "https://api-gateway-global.viu.com/api/mobile?r=/vod/login/guest&platform_flag_label=web&area_id=1000&language_flag_id=8&ut=0&countryCode=ID"
             r2 = s.get(guest_url, headers=headers, timeout=10)
@@ -70,7 +68,7 @@ def auto_harvest_token() -> str:
         except Exception as e:
             log.warning(f"Gagal guest login: {e}")
             
-    raise HTTPException(500, "Viu ngeblokir Vercel. Ganti region atau pake proxy.")
+    raise HTTPException(500, "Gagal dapet token. Viu mungkin ngeblokir IP Vercel.")
 
 def _bearer() -> str:
     b = kv_get("viu:bearer")
@@ -88,7 +86,6 @@ def _call(route: str, params: Optional[Dict] = None) -> Any:
         r = s.get(BASE, params=q, headers=headers, timeout=15)
         
     if r.status_code in (401, 403):
-        # Token mati di tengah jalan, hapus cache, panning lagi
         kv_set("viu:bearer", "", ex=1)
         headers["authorization"] = f"Bearer {auto_harvest_token()}"
         with creq.Session(impersonate="chrome") as s:
@@ -102,9 +99,18 @@ def _call(route: str, params: Optional[Dict] = None) -> Any:
 
 app = FastAPI(title="Viu Auto API")
 
+@app.get("/")
+def root():
+    return {"status": "ok", "message": "Viu API nyala. Buka /api/health atau /api/series/77893"}
+
 @app.get("/api/health")
 def health():
-    return {"ok": True, "engine": "Vercel Singapore", "kv": bool(CF_TOKEN)}
+    try:
+        # Paksa cek token, kalau kosong dia bakal auto-harvest
+        _bearer()
+        return {"ok": True, "status": "Token siap", "engine": "Vercel SG"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 @app.get("/api/series/{series_id}")
 def series(series_id: str, refresh: bool = False):
