@@ -1,4 +1,4 @@
-# api/index.py — Viu Auto API (Fortress Edition)
+# api/index.py — Viu Auto API (Fixed Stream Endpoint)
 import os, json, hashlib, logging, re, random, asyncio, time, secrets, threading
 from typing import Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, Depends, Header, Request
@@ -20,76 +20,33 @@ COMMON = {
 UA = ("Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/157.0.0.0 Mobile Safari/537.36")
 
-# --- OPTIONAL API KEY: browser clients may call the public API without a key ---
+# --- OPTIONAL API KEY & RATE LIMIT ---
 API_KEY_NAME = "X-API-Key"
-RATE_LIMIT_WINDOW = 60
-RATE_LIMITS = {
-    "default": 60,
-    "/api/search": 20,
-    "/api/series/": 30,
-    "/api/play/": 12,
-}
-ENABLE_KV_RATE_LIMIT = os.environ.get("ENABLE_KV_RATE_LIMIT", "false").lower() == "true"
-_rate_lock = threading.Lock()
+RATE_LIMITS = {"default": 60, "/api/search": 20, "/api/series/": 30, "/api/play/": 15}
 _rate_local: Dict[str, tuple] = {}
+_rate_lock = threading.Lock()
 
 def _rate_limit(request: Request) -> None:
-    # Vercel forwards the visitor IP in X-Forwarded-For. Hash it before using it
-    # as a KV key so raw IP addresses are not stored in Cloudflare KV.
     forwarded_for = request.headers.get("x-forwarded-for", "")
-    client_ip = forwarded_for.split(",", 1)[0].strip()
-    if not client_ip and request.client:
-        client_ip = request.client.host
-    if not client_ip:
-        client_ip = "unknown"
-
+    client_ip = forwarded_for.split(",", 1)[0].strip() or (request.client.host if request.client else "unknown")
     path = request.url.path
-    route_group, limit = next(
-        ((prefix, n) for prefix, n in RATE_LIMITS.items()
-         if prefix != "default" and path.startswith(prefix)),
-        ("default", RATE_LIMITS["default"]),
-    )
+    route_group, limit = next(((p, n) for p, n in RATE_LIMITS.items() if p != "default" and path.startswith(p)), ("default", RATE_LIMITS["default"]))
     now = int(time.time())
-    window = now // RATE_LIMIT_WINDOW
-    identity = hashlib.sha256(client_ip.encode()).hexdigest()[:24]
-    bucket = f"xs0:rate:{identity}:{route_group}:{window}"
+    window = now // 60
+    bucket = f"xs0:rate:{hashlib.sha256(client_ip.encode()).hexdigest()[:24]}:{route_group}:{window}"
 
-    # Local counter gives an immediate per-instance limit. Cloudflare KV can be
-    # opted into for an approximate cross-instance counter (it is not atomic).
     with _rate_lock:
-        count, expires = _rate_local.get(bucket, (0, now + RATE_LIMIT_WINDOW))
+        count, expires = _rate_local.get(bucket, (0, now + 60))
         if expires <= now:
             count = 0
-            expires = now + RATE_LIMIT_WINDOW
+            expires = now + 60
         count += 1
         _rate_local[bucket] = (count, expires)
-        if len(_rate_local) > 5000:
-            for old_bucket, (_, old_expiry) in list(_rate_local.items()):
-                if old_expiry <= now:
-                    _rate_local.pop(old_bucket, None)
 
-    kv_count = 0
-    if ENABLE_KV_RATE_LIMIT and CF_ACCOUNT and CF_KV_ID and CF_TOKEN:
-        try:
-            kv_count = int(kv_get(bucket) or 0) + 1
-            kv_set(bucket, str(kv_count), ex=RATE_LIMIT_WINDOW + 5)
-        except (TypeError, ValueError):
-            kv_count = 0
+    if count > limit:
+        raise HTTPException(status_code=429, detail="Terlalu banyak permintaan. Coba lagi nanti.", headers={"Retry-After": "60"})
 
-    if max(count, kv_count) > limit:
-        retry_after = RATE_LIMIT_WINDOW - (now % RATE_LIMIT_WINDOW)
-        raise HTTPException(
-            status_code=429,
-            detail="Terlalu banyak permintaan. Coba lagi sebentar.",
-            headers={"Retry-After": str(retry_after)},
-        )
-
-def verify_api_key(
-    request: Request,
-    api_key: Optional[str] = Header(default=None, alias=API_KEY_NAME),
-):
-    # The key remains optional for the frontend. If a client chooses to send it,
-    # reject invalid values rather than silently accepting a bad credential.
+def verify_api_key(request: Request, api_key: Optional[str] = Header(default=None, alias=API_KEY_NAME)):
     if api_key:
         expected_key = os.environ.get("MY_API_KEY", "")
         if not expected_key or not secrets.compare_digest(api_key, expected_key):
@@ -119,7 +76,7 @@ def kv_set(key: str, value: str, ex: int = 3600) -> None:
                   content=value, params={"expiration_ttl": str(ex)})
     except: pass
 
-# --- PROXY ROTATOR ---
+# --- TOKEN HARVESTER & PROXY ---
 async def get_id_proxies():
     proxies = []
     try:
@@ -135,7 +92,6 @@ async def get_id_proxies():
     random.shuffle(cleaned)
     return list(set(cleaned))[:20]
 
-# --- TOKEN HARVESTER ---
 async def test_proxy(proxy: str, headers: dict) -> Optional[str]:
     try:
         px = {"http": f"http://{proxy}", "https": f"http://{proxy}"}
@@ -173,7 +129,6 @@ def _bearer() -> str:
     if b: kv_set("viu:bearer", b, ex=43200)
     return b
 
-# --- LAPIS 2: EXPONENTIAL BACKOFF ---
 def _call(route: str, params: Optional[Dict] = None, retries: int = 2) -> Any:
     q = {**COMMON, "r": route}
     if params: q.update(params)
@@ -187,14 +142,11 @@ def _call(route: str, params: Optional[Dict] = None, retries: int = 2) -> Any:
                     kv_set("viu:bearer", "", ex=1)
                     headers["authorization"] = f"Bearer {auto_harvest_token()}"
                     r = s.get(BASE, params=q, headers=headers, timeout=15)
-                
                 if r.status_code == 429:
                     time.sleep(2 ** attempt)
                     continue
-                
                 if r.status_code != 200:
                     raise HTTPException(status_code=r.status_code, detail=f"Viu HTTP {r.status_code}")
-
         except Exception as e:
             if attempt == retries: raise HTTPException(status_code=502, detail=str(e))
             time.sleep(2 ** attempt)
@@ -216,8 +168,6 @@ app = FastAPI(title="Viu API", description="Protected API")
 @app.get("/")
 def root(): return {"status": "ok", "message": "API aktif."}
 
-# --- ENDPOINTS ---
-
 @app.get("/api/health", dependencies=[Depends(verify_api_key)])
 def health():
     try:
@@ -225,6 +175,18 @@ def health():
         return {"ok": True, "status": "Token siap"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+@app.get("/api/browse", dependencies=[Depends(verify_api_key)])
+def browse(size: int = 20, page: int = 1):
+    ckey = f"viu:browse:{size}:{page}"
+    cached = kv_get(ckey)
+    if cached: return json.loads(cached)
+    
+    # filter_id 1 = Movies/Series
+    params = {"size": size, "start": (page - 1) * size, "sort": "desc", "filter_id": "1"}
+    data = _call("/vod/product-list", params)
+    kv_set(ckey, json.dumps(data, ensure_ascii=False), ex=3600)
+    return data
 
 @app.get("/api/search", dependencies=[Depends(verify_api_key)])
 def search(q: str):
@@ -245,7 +207,6 @@ def search(q: str):
     keyword_encoded = quote(q)
     url = f"{BASE}?platform_flag_label=web&area_id=1000&language_flag_id=8&ut=0&platformFlagLabel=web&areaId=1000&languageFlagId=8&countryCode=ID&r=%2Fsearch%2Fprediction&keyword={keyword_encoded}"
 
-    # Spoof IP (Trik andalan)
     fake_ip = f"114.122.{random.randint(1,255)}.{random.randint(1,255)}"
     headers_spoof = {**headers, "x-forwarded-for": fake_ip, "x-real-ip": fake_ip}
     
@@ -265,25 +226,6 @@ def search(q: str):
 
     return {"query": q, "series": [], "actor": [], "note": "Spoof gagal, silakan coba lagi."}
 
-@app.get("/api/home", dependencies=[Depends(verify_api_key)])
-def home():
-    ckey = "viu:home"
-    cached = kv_get(ckey)
-    if cached: return json.loads(cached)
-    
-    try:
-        with Session(impersonate="chrome") as s:
-            r = s.get(VIU_HOME, headers={"user-agent": UA}, timeout=15)
-            if r.status_code == 200:
-                series_ids = list(set(re.findall(r'"series_id":\s*"(\d+)"', r.text)))
-                fallback_list = [{"series_id": sid} for sid in series_ids[:20]]
-                result = {"status": "success", "method": "html_scrape", "data": fallback_list}
-                if fallback_list:
-                    kv_set(ckey, json.dumps(result, ensure_ascii=False), ex=1800)
-                    return result
-    except Exception: pass
-    return {"status": "error", "message": "Gagal ambil data home."}
-
 @app.get("/api/series/{series_id}", dependencies=[Depends(verify_api_key)])
 def series(series_id: str, refresh: bool = False):
     ckey = f"viu:series:{series_id}"
@@ -296,13 +238,38 @@ def series(series_id: str, refresh: bool = False):
     kv_set(ckey, json.dumps(result, ensure_ascii=False), ex=21600)
     return result
 
-@app.get("/api/play/{product_id}", dependencies=[Depends(verify_api_key)])
-def play(product_id: str, series_id: str = None):
-    params = {"product_id": product_id}
-    if series_id: params["series_id"] = series_id
-    ckey = f"viu:play:{product_id}"
+# --- FIX: PAKAI ENDPOINT /playback/distribute BARU ---
+@app.get("/api/play/{ccs_product_id}", dependencies=[Depends(verify_api_key)])
+def play(ccs_product_id: str, series_id: str = None):
+    if not ccs_product_id.isdigit(): raise HTTPException(400, "Invalid ID")
+    
+    ckey = f"viu:play:{ccs_product_id}"
     cached = kv_get(ckey)
     if cached: return json.loads(cached)
-    data = _call("/vod/product/play", params)
-    kv_set(ckey, json.dumps(data, ensure_ascii=False), ex=1800)
-    return data
+    
+    token = _bearer()
+    if not token: raise HTTPException(502, "Gagal ambil token Viu.")
+    
+    # Viu pindah endpoint, bukan /vod/product/play lagi
+    url = f"https://api-gateway-global.viu.com/api/playback/distribute?platform_flag_label=web&area_id=1000&language_flag_id=8&ut=0&platformFlagLabel=web&areaId=1000&languageFlagId=8&countryCode=ID&ccs_product_id={ccs_product_id}"
+    headers = {
+        "accept": "application/json, text/plain, */*",
+        "authorization": f"Bearer {token}",
+        "user-agent": UA,
+        "origin": "https://www.viu.com",
+        "referer": "https://www.viu.com/"
+    }
+    
+    with Session(impersonate="chrome") as s:
+        r = s.get(url, headers=headers, timeout=15)
+        
+    if r.status_code != 200:
+        raise HTTPException(502, f"Viu HTTP {r.status_code}")
+        
+    data = r.json()
+    if data.get("status", {}).get("code") != 0:
+        raise HTTPException(502, data.get("status", {}).get("message", "Error"))
+        
+    result = data.get("data", {})
+    kv_set(ckey, json.dumps(result, ensure_ascii=False), ex=1800)
+    return result
