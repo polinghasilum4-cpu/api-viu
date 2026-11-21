@@ -1,5 +1,5 @@
-# api/index.py — Viu Auto API (Vercel SG)
-import os, json, hashlib, logging, re
+# api/index.py — Viu Auto API (Header Spoof Edition)
+import os, json, hashlib, logging, re, random
 from typing import Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, Query
 from curl_cffi import requests as creq
@@ -41,21 +41,33 @@ def kv_set(key: str, value: str, ex: int = 3600) -> None:
     except: pass
 
 def auto_harvest_token() -> str:
-    """Nyedot token langsung dari web Viu pake IP Singapore (Vercel)."""
-    log.info("Token kosong/expired. Mancing token baru...")
-    headers = {"user-agent": UA, "accept-language": "id-ID,id;q=0.9"}
+    log.info("Mancing token baru pake trik Spoof IP...")
+    # Pake IP Telkom/Indosat biar dikira orang Indonesia
+    fake_id_ip = f"114.122.{random.randint(1, 255)}.{random.randint(1, 255)}"
+    
+    headers = {
+        "user-agent": UA, 
+        "accept-language": "id-ID,id;q=0.9",
+        "x-forwarded-for": fake_id_ip,
+        "x-real-ip": fake_id_ip,
+        "x-viu-ip": fake_id_ip
+    }
     
     with creq.Session(impersonate="chrome") as s:
+        # 1. Tembak halaman depan
         try:
             r = s.get(VIU_HOME, headers=headers, timeout=15)
-            # Cari string token JWE
-            m = re.search(r'(eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+)', r.text)
-            if m:
-                log.info("Token ketemu di HTML Viu!")
-                return m.group(1)
+            if "not available in your country" not in r.text:
+                m = re.search(r'(eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+)', r.text)
+                if m:
+                    log.info("Token ketemu di HTML (Spoof sukses)!")
+                    return m.group(1)
+            else:
+                log.warning("Spoof header ditolak Viu.")
         except Exception as e:
             log.warning(f"Gagal buka home: {e}")
 
+        # 2. Tembak API Guest
         try:
             guest_url = "https://api-gateway-global.viu.com/api/mobile?r=/vod/login/guest&platform_flag_label=web&area_id=1000&language_flag_id=8&ut=0&countryCode=ID"
             r2 = s.get(guest_url, headers=headers, timeout=10)
@@ -63,12 +75,12 @@ def auto_harvest_token() -> str:
                 data = r2.json()
                 tok = data.get("data", {}).get("token")
                 if tok: 
-                    log.info("Token ketemu dari Guest API!")
+                    log.info("Token ketemu dari Guest API (Spoof sukses)!")
                     return tok
         except Exception as e:
             log.warning(f"Gagal guest login: {e}")
             
-    raise HTTPException(500, "Gagal dapet token. Viu mungkin ngeblokir IP Vercel.")
+    raise HTTPException(500, "Gagal dapet token. Viu ngeblokir IP Vercel.")
 
 def _bearer() -> str:
     b = kv_get("viu:bearer")
@@ -80,7 +92,17 @@ def _bearer() -> str:
 def _call(route: str, params: Optional[Dict] = None) -> Any:
     q = {**COMMON, "r": route}
     if params: q.update(params)
-    headers = {"accept": "application/json, text/plain, */*", "authorization": f"Bearer {_bearer()}", "user-agent": UA, "origin": "https://www.viu.com", "referer": "https://www.viu.com/"}
+    
+    fake_id_ip = f"114.122.{random.randint(1, 255)}.{random.randint(1, 255)}"
+    headers = {
+        "accept": "application/json, text/plain, */*", 
+        "authorization": f"Bearer {_bearer()}", 
+        "user-agent": UA, 
+        "origin": "https://www.viu.com", 
+        "referer": "https://www.viu.com/",
+        "x-forwarded-for": fake_id_ip,
+        "x-viu-ip": fake_id_ip
+    }
     
     with creq.Session(impersonate="chrome") as s:
         r = s.get(BASE, params=q, headers=headers, timeout=15)
@@ -106,7 +128,6 @@ def root():
 @app.get("/api/health")
 def health():
     try:
-        # Paksa cek token, kalau kosong dia bakal auto-harvest
         _bearer()
         return {"ok": True, "status": "Token siap", "engine": "Vercel SG"}
     except Exception as e:
