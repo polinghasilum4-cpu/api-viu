@@ -1,4 +1,4 @@
-# api/index.py — Viu Auto API (Final Edition)
+# api/index.py — Viu Auto API (Final + Home + Browse Fix)
 import os, json, hashlib, logging, re, random, asyncio
 from typing import Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, Query
@@ -133,6 +133,17 @@ def health():
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+@app.get("/api/home")
+def home():
+    """Nampilin daftar kategori dan film trending di homepage Viu."""
+    ckey = "viu:home"
+    cached = kv_get(ckey)
+    if cached: return json.loads(cached)
+    
+    data = _call("/vod/home")
+    kv_set(ckey, json.dumps(data, ensure_ascii=False), ex=1800)
+    return data
+
 @app.get("/api/series/{series_id}")
 def series(series_id: str, refresh: bool = False):
     ckey = f"viu:series:{series_id}"
@@ -144,10 +155,6 @@ def series(series_id: str, refresh: bool = False):
     result = {"series_id": series_id, "episodes": plist}
     kv_set(ckey, json.dumps(result, ensure_ascii=False), ex=21600)
     return result
-
-@app.get("/api/episodes/{series_id}")
-def episodes(series_id: str):
-    return series(series_id)["episodes"]
 
 @app.get("/api/search")
 def search(q: str, size: int = 20):
@@ -178,25 +185,30 @@ def search(q: str, size: int = 20):
             last_err = e.detail
             continue
 
-    return {
-        "query": q,
-        "count": 0,
-        "product_list": [],
-        "note": "Endpoint search Viu tidak ditemukan. Pakai /api/browse atau /api/series.",
-        "last_error": last_err,
-    }
+    return {"query": q, "count": 0, "product_list": [], "note": "Search kosong."}
 
 @app.get("/api/browse")
-def browse(category: str = Query(None), page: int = 1, size: int = 20, sort: str = "desc", filter_id: int = None):
-    params = {"size": size, "sort": sort, "start": (page - 1) * size}
-    if category: params["category"] = category
-    if filter_id: params["filter_id"] = filter_id
-    h = hashlib.md5(json.dumps(params, sort_keys=True).encode()).hexdigest()
-    ckey = f"viu:browse:{h}"
+def browse(category: str = Query(None), page: int = 1, size: int = 20, sort: str = "desc"):
+    # Viu kadang minta category_id (angka) bukan string. Kita coba beberapa opsi.
+    ckey = f"viu:browse:{category}:{page}:{size}"
     cached = kv_get(ckey)
     if cached: return json.loads(cached)
+
+    params = {"size": size, "sort": sort, "start": (page - 1) * size}
+    if category:
+        # Coba tebak ID dari string kategori (misal drama=1, movie=2)
+        cat_map = {"drama": "1", "movie": "2", "anime": "3", "variety": "4"}
+        cat_id = cat_map.get(category.lower(), category)
+        params["category_id"] = cat_id
+
     data = _call("/vod/product-list", params)
-    kv_set(ckey, json.dumps(data, ensure_ascii=False), ex=1800)
+    # Kadang Viu balikin null kalau kategori salah. Kita pastiin balikin array kosong.
+    if "product_list" not in data or data["product_list"] is None:
+        data["product_list"] = []
+        
+    if data["product_list"]:
+        kv_set(ckey, json.dumps(data, ensure_ascii=False), ex=1800)
+        
     return data
 
 @app.get("/api/play/{product_id}")
