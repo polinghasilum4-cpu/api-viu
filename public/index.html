@@ -188,30 +188,18 @@
   <video id="video" controls playsinline crossorigin="anonymous"></video>
 </div>
 
-<!-- CONFIG -->
-<div class="overlay" id="cfg-overlay">
-  <div class="cfg">
-    <h2>Otorisasi</h2>
-    <p>Masukkan API Key xs0Movie Anda untuk mulai streaming.</p>
-    <input id="cfg-key" type="password" placeholder="X-API-Key..." autocomplete="off">
-    <button class="btn-save" onclick="saveKey()">Simpan & Lanjut</button>
-  </div>
-</div>
-
 <div class="toast" id="toast"></div>
 
 <script>
 const API_BASE = ""; 
-let API_KEY = localStorage.getItem("xs0.key") || "";
 
 // --- CORE HTTP ---
 async function apiFetch(path, options = {}) {
-  const headers = { "X-API-Key": API_KEY, "accept": "application/json", ...options.headers };
+  const headers = { "accept": "application/json", ...options.headers };
   const res = await fetch(API_BASE + path, { ...options, headers });
   if (!res.ok) {
     if (res.status === 403 || res.status === 401) {
-      document.getElementById("cfg-overlay").classList.add("open");
-      throw new Error("API Key tidak valid");
+      throw new Error("Akses API ditolak");
     }
     const errData = await res.json().catch(() => ({}));
     throw new Error(errData.detail || `HTTP Error ${res.status}`);
@@ -531,24 +519,13 @@ function renderHistory() {
 }
 
 // --- INIT ---
-function saveKey() {
-  const v = document.getElementById("cfg-key").value.trim();
-  if (!v) { toast("Key kosong!"); return; }
-  API_KEY = v;
-  localStorage.setItem("xs0.key", v);
-  document.getElementById("cfg-overlay").classList.remove("open");
-  init();
-}
-if (!API_KEY) document.getElementById("cfg-overlay").classList.add("open");
-
 window.addEventListener("scroll", () => document.getElementById("hdr").classList.toggle("solid", scrollY > 20), { passive: true });
 
 async function init() {
-  if (!API_KEY) return;
   renderHistory();
   await loadHome();
 }
 init();
 </script>
 </body>
-  </html>
+</html>
