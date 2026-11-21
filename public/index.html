@@ -22,18 +22,11 @@
   }
   *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
   html,body{background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow-x:hidden}
-  body{min-height:100dvh;letter-spacing:-.01em;line-height:1.45}
+  body{min-height:100dvh;letter-spacing:-.01em;line-height:1.45;display:flex;flex-direction:column}
   ::selection{background:var(--amber);color:#000}
   img{display:block;max-width:100%}
   button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
   input{font:inherit;color:inherit;background:none;border:none;outline:none}
-
-  /* ── NOISE GRAIN ── */
-  body::before{
-    content:"";position:fixed;inset:0;pointer-events:none;z-index:1;opacity:.03;
-    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
-    mix-blend-mode:overlay;
-  }
 
   /* ── HEADER ── */
   header{
@@ -56,32 +49,34 @@
   }
   .search-wrap input:focus{background:rgba(255,255,255,.1);border-color:var(--line2);box-shadow:0 0 0 3px rgba(255,179,0,.15)}
   .search-wrap svg{position:absolute;left:15px;top:50%;transform:translateY(-50%);opacity:.5}
-  .clock{font-variant-numeric:tabular-nums;font-size:13px;color:var(--muted);white-space:nowrap;display:none}
-  @media(min-width:720px){.clock{display:block}}
-
-  /* ── HERO (COMPACT) ── */
-  .hero{
-    position:relative;min-height:35dvh;display:flex;align-items:center;
-    padding:100px max(20px,5vw) 30px;
-    overflow:hidden;isolation:isolate;
-  }
-  #orb{position:absolute;right:-10%;top:50%;transform:translateY(-50%);width:70vw;height:70vw;z-index:-1;opacity:.7;pointer-events:none}
-  @media(min-width:820px){#orb{right:0;width:min(50vw,500px);height:min(50vw,500px);opacity:1}}
   
-  .hero-inner{max-width:1480px;margin:0 auto;width:100%;position:relative;z-index:2}
-  .hero-kicker{display:inline-flex;align-items:center;gap:8px;font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:var(--muted);margin-bottom:14px}
-  .hero-kicker::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 12px var(--accent);animation:pulse 2s infinite}
+  /* ── VIEWS (PISAH HALAMAN) ── */
+  .view{display:none;padding-top:80px;animation:fadeIn .4s var(--ease)}
+  .view.active{display:block}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+  /* ── TOP BANNER (SAPAAN & TOMBOL) ── */
+  .top-banner{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:10px 24px;margin-bottom:20px;max-width:1480px;margin-inline:auto;
+    width:100%;gap:12px;flex-wrap:wrap;
+  }
+  .greeting{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500;color:var(--muted)}
+  .greeting::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 12px var(--accent);animation:pulse 2s infinite}
+  .greeting b{color:var(--fg);font-weight:700;text-transform:capitalize}
   @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.8)}}
   
-  .hero h1{font-size:clamp(32px,6vw,56px);font-weight:900;letter-spacing:-.04em;line-height:1.05;margin-bottom:12px;max-width:15ch}
-  .hero h1 em{font-style:normal;background:linear-gradient(92deg,var(--accent),var(--pink));-webkit-background-clip:text;background-clip:text;color:transparent}
-  .hero p{font-size:clamp(14px,1.5vw,16px);color:var(--muted);max-width:46ch}
+  .btn-explore{
+    padding:8px 16px;border-radius:999px;background:rgba(255,255,255,.08);border:1px solid var(--line2);
+    font-size:12px;font-weight:600;transition:all .2s;display:flex;align-items:center;gap:6px;
+  }
+  .btn-explore:hover{background:var(--fg);color:#000;transform:translateY(-1px)}
 
   /* ── MAIN CONTENT ── */
-  main{padding:0 max(18px,4vw) 100px;max-width:1480px;margin:0 auto;position:relative;z-index:2}
-  .row{margin-bottom:48px;scroll-margin-top:80px}
+  main{padding:0 max(18px,4vw) 100px;max-width:1480px;margin:0 auto;position:relative;z-index:2;width:100%}
+  .row{margin-bottom:32px}
   .row-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:16px}
-  .row-head h2{font-size:clamp(18px,2.5vw,22px);font-weight:700;letter-spacing:-.02em;display:flex;align-items:center;gap:10px}
+  .row-head h2{font-size:clamp(16px,2.2vw,20px);font-weight:700;letter-spacing:-.02em}
   .row-head span{font-size:12px;color:var(--muted)}
   
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:14px}
@@ -145,50 +140,49 @@
 
   .toast{position:fixed;bottom:24px;left:50%;transform:translate(-50%,100px);z-index:300;padding:12px 24px;border-radius:999px;background:#222;border:1px solid var(--line2);font-size:13px;font-weight:500;box-shadow:0 10px 40px rgba(0,0,0,.8);transition:transform .4s var(--ease);pointer-events:none}
   .toast.show{transform:translate(-50%,0)}
-
-  .reveal{opacity:0;transform:translateY(20px);transition:opacity .6s var(--ease),transform .6s var(--ease)}
-  .reveal.in{opacity:1;transform:none}
 </style>
 </head>
 <body>
 
 <header id="hdr">
-  <div class="logo"><span>xs0</span><b>Movie</b></div>
+  <div class="logo" onclick="switchView('home')" style="cursor:pointer"><span>xs0</span><b>Movie</b></div>
   <div class="search-wrap">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
     <input id="search" type="search" placeholder="Cari drama, film, anime..." autocomplete="off" spellcheck="false">
   </div>
-  <div class="clock" id="clock">--:--</div>
 </header>
 
-<section class="hero">
-  <canvas id="orb"></canvas>
-  <div class="hero-inner">
-    <div class="hero-kicker" id="kicker">memuat</div>
-    <h1 id="greet">Selamat <em>malam</em>.</h1>
-    <p id="subgreet">Mau nonton apa sekarang?</p>
+<!-- VIEW: HOME -->
+<div class="view active" id="view-home">
+  <div class="top-banner">
+    <div class="greeting">Selamat <b id="greet-time">Malam</b></div>
+    <button class="btn-explore" onclick="switchView('search')">Lihat Trending</button>
   </div>
-</section>
+  
+  <main>
+    <section class="row" id="row-history" style="display:none">
+      <div class="row-head"><h2>Lanjut Nonton</h2><span id="history-count"></span></div>
+      <div class="grid" id="history-grid"></div>
+    </section>
 
-<main>
-  <!-- Section Hasil Pencarian -->
-  <section class="row" id="row-results" style="display:none">
-    <div class="row-head"><h2 id="results-title">Hasil</h2><span id="results-count"></span></div>
-    <div class="grid" id="results-grid"></div>
-  </section>
+    <section class="row">
+      <div class="row-head"><h2>Pilihan Hari Ini</h2><span>dari Viu</span></div>
+      <div class="grid" id="home-grid">
+        <!-- Skeleton / Cards disini -->
+      </div>
+    </section>
+  </main>
+</div>
 
-  <!-- Section Lanjut Nonton -->
-  <section class="row" id="row-history" style="display:none">
-    <div class="row-head"><h2>Lanjut Nonton</h2><span id="history-count"></span></div>
-    <div class="grid" id="history-grid"></div>
-  </section>
-
-  <!-- Section Beranda (Otomatis) -->
-  <section class="row" id="row-trending">
-    <div class="row-head"><h2 id="trending-title">Pilihan Hari Ini</h2><span>dari Viu</span></div>
-    <div class="grid" id="trending-grid"></div>
-  </section>
-</main>
+<!-- VIEW: SEARCH -->
+<div class="view" id="view-search">
+  <main>
+    <section class="row">
+      <div class="row-head"><h2 id="results-title">Hasil Pencarian</h2><span id="results-count"></span></div>
+      <div class="grid" id="results-grid"></div>
+    </section>
+  </main>
+</div>
 
 <!-- Detail Modal -->
 <div class="overlay" id="detail">
@@ -239,16 +233,17 @@
 const API_BASE = ""; 
 let API_KEY = localStorage.getItem("xs0.key") || "";
 
+/* ── CORE HTTP ── */
 async function api(path){
   const r = await fetch(API_BASE + path, {
     headers: { "X-API-Key": API_KEY, "accept": "application/json" }
   });
   if(!r.ok) {
-    if(r.status === 403) {
+    if(r.status === 403 || r.status === 401) {
       document.getElementById("cfg-overlay").classList.add("open"); 
-      throw new Error("API Key salah atau kosong");
+      throw new Error("API Key tidak valid");
     }
-    throw new Error("HTTP " + r.status);
+    throw new Error("Server Error (" + r.status + ")");
   }
   return r.json();
 }
@@ -260,98 +255,33 @@ function toast(msg){
   t._h = setTimeout(()=>t.classList.remove("show"), 2400);
 }
 
-/* ── GREETING & THEME ── */
-const GREETINGS = {
-  pagi:   { label:"pagi",   word:"pagi",   accent:"#ffb300", sub:"Kopi dulu, baru lanjut maraton.", tag:"Selamat pagi" },
-  siang:  { label:"siang",  word:"siang",  accent:"#38e1ff", sub:"Jam istirahat. Waktunya satu episode.", tag:"Selamat siang" },
-  sore:   { label:"sore",   word:"sore",   accent:"#ff7a45", sub:"Matahari turun, tirai ditutup, layar nyala.", tag:"Selamat sore" },
-  malam:  { label:"malam",  word:"malam",  accent:"#8b5cf6", sub:"Lampu mati. Layar jadi satu-satunya cahaya.", tag:"Selamat malam" }
-};
+/* ── NAVIGASI VIEW ── */
+function switchView(viewId) {
+  document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
+  document.getElementById('view-' + viewId).classList.add('active');
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
 
-function getWibHour(){
-  const now = new Date();
-  return new Date(now.getTime() + now.getTimezoneOffset() * 60000 + 7 * 3600000).getHours();
-}
-function greetingFor(h){
-  if(h>=4 && h<11) return GREETINGS.pagi;
-  if(h>=11 && h<15) return GREETINGS.siang;
-  if(h>=15 && h<18) return GREETINGS.sore;
-  return GREETINGS.malam;
-}
+/* ── GREETING LOGIC ── */
 function updateGreeting(){
-  const h = getWibHour();
-  const g = greetingFor(h);
-  document.documentElement.style.setProperty("--accent", g.accent);
-  document.getElementById("kicker").textContent = g.tag;
-  document.getElementById("greet").innerHTML = `Selamat <em>${g.word}</em>.`;
-  document.getElementById("subgreet").textContent = g.sub;
-  document.getElementById("clock").textContent = new Date().toLocaleTimeString("id-ID",{timeZone:"Asia/Jakarta",hour:"2-digit",minute:"2-digit"});
-  orbTheme = g.accent;
+  const now = new Date();
+  const h = new Date(now.getTime() + now.getTimezoneOffset() * 60000 + 7 * 3600000).getHours();
+  let timeStr = "Malam", accent = "#8b5cf6";
+  if(h>=4 && h<11) { timeStr = "Pagi"; accent = "#ffb300"; }
+  else if(h>=11 && h<15) { timeStr = "Siang"; accent = "#38e1ff"; }
+  else if(h>=15 && h<18) { timeStr = "Sore"; accent = "#ff7a45"; }
+  
+  document.getElementById("greet-time").textContent = timeStr;
+  document.documentElement.style.setProperty("--accent", accent);
+  orbTheme = accent;
 }
 setInterval(updateGreeting, 60000);
 updateGreeting();
 
 /* ── 3D ORB ── */
 let orbTheme = "#8b5cf6";
-const cvs = document.getElementById("orb");
+const cvs = document.createElement("canvas"); // Orb disembunyiin aja biar ringan
 const ctx = cvs.getContext("2d");
-let W=0,H=0,DPR=Math.min(devicePixelRatio||1,2);
-
-function resizeOrb(){
-  const rect = cvs.getBoundingClientRect();
-  W = rect.width; H = rect.height;
-  cvs.width = W*DPR; cvs.height = H*DPR;
-  ctx.setTransform(DPR,0,0,DPR,0,0);
-}
-window.addEventListener("resize", resizeOrb);
-resizeOrb();
-
-const N = 180, pts = [];
-for(let i=0;i<N;i++){
-  const phi = Math.acos(1 - 2*(i+0.5)/N);
-  const theta = Math.PI*(1+Math.sqrt(5))*i;
-  pts.push({ x: Math.cos(theta)*Math.sin(phi), y: Math.sin(theta)*Math.sin(phi), z: Math.cos(phi) });
-}
-const EDGES = [];
-for(let i=0;i<N;i++){
-  for(let j=i+1;j<N;j++){
-    const dx=pts[i].x-pts[j].x, dy=pts[i].y-pts[j].y, dz=pts[i].z-pts[j].z;
-    if((dx*dx+dy*dy+dz*dz) < 0.08) EDGES.push([i,j]);
-  }
-}
-
-let t0 = performance.now();
-function drawOrb(now){
-  const t = (now - t0) / 1000;
-  const rect = cvs.getBoundingClientRect();
-  if(rect.bottom < 0 || rect.top > innerHeight){ requestAnimationFrame(drawOrb); return; }
-  ctx.clearRect(0,0,W,H);
-
-  const cx = W/2, cy = H/2, R = Math.min(W,H)*0.36;
-  const rotY = t * 0.4, rotX = Math.sin(t*0.2)*0.4;
-  const cosY=Math.cos(rotY), sinY=Math.sin(rotY), cosX=Math.cos(rotX), sinX=Math.sin(rotX);
-  
-  const proj = pts.map(p=>{
-    let x = p.x*cosY - p.z*sinY; let z = p.x*sinY + p.z*cosY;
-    let y = p.y*cosX - z*sinX; z = p.y*sinX + z*cosX;
-    const persp = 1.9 / (1.9 + z*0.9);
-    return { x: cx + x*R*persp, y: cy + y*R*persp, z, persp };
-  });
-
-  ctx.lineWidth = 0.8; ctx.strokeStyle = orbTheme;
-  for(const [i,j] of EDGES){
-    const a = proj[i], b = proj[j];
-    ctx.globalAlpha = Math.max(0, 0.1 - ((a.z+b.z)*0.5)*0.1);
-    ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
-  }
-  for(const p of proj){
-    ctx.globalAlpha = Math.max(0.1, 0.9 - p.z*0.4);
-    ctx.fillStyle = orbTheme;
-    ctx.beginPath(); ctx.arc(p.x,p.y,Math.max(0.8, 2.5 * p.persp),0,6.283); ctx.fill();
-  }
-  requestAnimationFrame(drawOrb);
-}
-requestAnimationFrame(drawOrb);
 
 /* ── UI HELPERS ── */
 function placeholder(seed){
@@ -362,8 +292,7 @@ function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({ "&":"&amp;","
 
 function makeCard({ id, title, sub, index=0 }){
   const el = document.createElement("div");
-  el.className = "card reveal";
-  el.style.transitionDelay = (index * 30) + "ms";
+  el.className = "card";
   el.innerHTML = `
     <div style="position:absolute;inset:0;background:${placeholder(title)};display:flex;align-items:center;justify-content:center;font-size:48px;font-weight:900;color:rgba(255,255,255,.15)">${escapeHtml(title.charAt(0))}</div>
     <div class="card-badge">HD</div>
@@ -375,63 +304,50 @@ function makeCard({ id, title, sub, index=0 }){
   return el;
 }
 
-const io = new IntersectionObserver(entries=>{
-  entries.forEach(en=>{ if(en.isIntersecting){ en.target.classList.add("in"); io.unobserve(en.target); } });
-}, { threshold:.1 });
-function observeReveals(){ document.querySelectorAll(".reveal:not(.in)").forEach(el=>io.observe(el)); }
-
-/* ── LOAD BERANDA (REPLACED /api/home WITH SEARCH) ── */
+/* ── FETCH HOME (TRENDING) ── */
 async function loadHome(){
-  const grid = document.getElementById("trending-grid");
+  const grid = document.getElementById("home-grid");
   grid.innerHTML = Array(10).fill('<div class="skel"></div>').join("");
   
   try {
-    // Nembak API Search pake keyword "Drama" buat ngeisi beranda
+    // Panggil API search keyword "Drama"
     const data = await api("/api/search?q=Drama");
     const series = data.series || [];
     grid.innerHTML = "";
     
     if(series.length === 0) {
-      grid.innerHTML = `<div class="empty"><b>Belum ada data</b>Gagal mengambil data dari server.</div>`;
+      grid.innerHTML = `<div class="empty"><b>Data Kosong</b>Server tidak mengembalikan hasil.</div>`;
       return;
     }
     
-    // Tampilin 15 film pertama
     series.slice(0, 15).forEach((s, i) => {
       grid.appendChild(makeCard({ id: s.id, title: s.name, index: i }));
     });
-    observeReveals();
   } catch(e) {
-    grid.innerHTML = `<div class="empty"><b>Koneksi gagal</b>${e.message}</div>`;
+    grid.innerHTML = `<div class="empty"><b>Koneksi Gagal</b>${e.message}</div>`;
   }
 }
 
-/* ── SEARCH LOGIC ── */
+/* ── FETCH SEARCH ── */
 let searchT;
 const searchInput = document.getElementById("search");
 searchInput.addEventListener("input", ()=>{
   clearTimeout(searchT);
   const q = searchInput.value.trim();
   if(!q){ 
-    document.getElementById("row-results").style.display = "none"; 
+    switchView('home');
     return; 
   }
-  searchT = setTimeout(()=>runSearch(q), 450);
+  switchView('search');
+  searchT = setTimeout(()=>runSearch(q), 500);
 });
 
 async function runSearch(q){
-  const row = document.getElementById("row-results");
   const grid = document.getElementById("results-grid");
-  const title = document.getElementById("results-title");
   const count = document.getElementById("results-count");
-  
-  row.style.display = "block";
-  title.textContent = `Hasil: "${q}"`;
-  count.textContent = "";
+  document.getElementById("results-title").textContent = `Hasil: "${q}"`;
   grid.innerHTML = Array(6).fill('<div class="skel"></div>').join("");
   
-  row.scrollIntoView({ behavior: "smooth", block: "start" });
-
   try{
     const data = await api("/api/search?q=" + encodeURIComponent(q));
     const series = data.series || [];
@@ -439,14 +355,14 @@ async function runSearch(q){
     grid.innerHTML = "";
     
     if(!series.length){
-      grid.innerHTML = `<div class="empty"><b>Nggak ketemu</b>Coba kata kunci lain.</div>`;
+      grid.innerHTML = `<div class="empty"><b>Nggak Ketemu</b>Coba kata kunci lain.</div>`;
       return;
     }
     series.forEach((s,i)=>{
       grid.appendChild(makeCard({ id: s.id, title: s.name, sub: s.weight ? `skor ${s.weight}` : "", index: i }));
     });
   }catch(e){
-    grid.innerHTML = `<div class="empty"><b>Pencarian gagal</b>${escapeHtml(e.message)}</div>`;
+    grid.innerHTML = `<div class="empty"><b>Pencarian Gagal</b>${escapeHtml(e.message)}</div>`;
   }
 }
 
@@ -581,10 +497,6 @@ function closePlayer(){
 document.addEventListener("keydown", e=>{
   if(e.key === "Escape"){ closePlayer(); closeDetail(); }
   if(e.key === "/" && document.activeElement !== searchInput){ e.preventDefault(); searchInput.focus(); }
-  if(player.classList.contains("open")){
-    if(e.key === "ArrowRight") nextEp();
-    if(e.key === "ArrowLeft") prevEp();
-  }
 });
 
 /* ── HISTORY ── */
@@ -626,7 +538,7 @@ window.addEventListener("scroll", ()=>{
 async function init(){
   if(!API_KEY) return;
   renderHistory();
-  await loadHome(); // Nembak API search buat isi halaman depan
+  await loadHome();
 }
 init();
 </script>
