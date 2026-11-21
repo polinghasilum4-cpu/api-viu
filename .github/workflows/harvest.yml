@@ -1,0 +1,27 @@
+name: viu-harvest
+on:
+  schedule:
+    - cron: "0 23 * * *"     # 06:00 WIB
+  workflow_dispatch:
+
+jobs:
+  harvest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+
+      - name: install patchright
+        run: |
+          pip install patchright httpx
+          patchright install chromium
+          patchright install-deps chromium
+
+      - name: harvest bearer
+        env:
+          VIU_SECRET: ${{ secrets.HARVEST_SECRET }}
+          VERCEL_URL: ${{ secrets.VERCEL_URL }}
+        run: python scripts/harvest_viu.py
